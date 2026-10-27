@@ -136,6 +136,8 @@ base seconds
 
 For example, with the cooldown enabled, a base of `120`, a `density` rate of `5`, and Density III produce a 135-second cooldown before armor modifiers are applied. The default base is `0` and the cooldown is disabled, which leaves the vanilla attack-speed bar unchanged.
 
+Run `/maces setcooldown 120` to set the base and enable cooldowns. Setting the base to `0` keeps enchantment modifiers active if cooldowns are enabled; set `cooldown.enabled: false` and run `/maces reload` to disable them entirely. Operators bypass mace cooldowns by default (see permissions below).
+
 - Positive rates increase the duration; negative rates reduce it.
 - A rate of `0` ignores that enchantment.
 - A total of zero or less starts no cooldown, even if the configured minimum is

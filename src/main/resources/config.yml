@@ -20,6 +20,7 @@ cooldown:
   ignore-thorns: true
   # Extra seconds after a real main-hand mace swing. 0 matches vanilla.
   # Enchantment modifiers below are added on top once the cooldown is enabled.
+  # /maces setcooldown <seconds> also enables cooldowns when seconds is positive.
   base-seconds: 0
   minimum-seconds: 0
   maximum-seconds: 600

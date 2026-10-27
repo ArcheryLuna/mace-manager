@@ -92,7 +92,11 @@ public final class PluginConfig {
 
     public void setBaseSeconds(int seconds) {
         baseSeconds = Math.max(0, seconds);
-        if (persist("base-seconds", Integer.toString(baseSeconds))) {
+        if (baseSeconds > 0) {
+            cooldownEnabled = true;
+        }
+        if (persist(Map.of("cooldown.base-seconds", Integer.toString(baseSeconds),
+                "cooldown.enabled", Boolean.toString(cooldownEnabled)))) {
             load();
         }
     }
@@ -215,9 +219,13 @@ public final class PluginConfig {
     }
 
     private boolean persist(String key, String value) {
+        return persist(Map.of(key, value));
+    }
+
+    private boolean persist(Map<String, String> values) {
         File file = new File(plugin.getDataFolder(), "config.yml");
         try {
-            ConfigStore.replace(file, key, value);
+            ConfigStore.replace(file, values);
             plugin.reloadConfig();
             return true;
         } catch (IOException exception) {

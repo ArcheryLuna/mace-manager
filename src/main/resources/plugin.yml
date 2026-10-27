@@ -32,7 +32,7 @@ permissions:
     description: Set the server mace limit.
     default: op
   macemanager.command.setcooldown:
-    description: Set the base mace cooldown.
+    description: Set the base mace cooldown; a positive value also enables cooldowns.
     default: op
   macemanager.command.enchanting:
     description: Turn mace enchanting on or off.
