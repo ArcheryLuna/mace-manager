@@ -1,0 +1,51 @@
+name: MaceManager
+version: '${version}'
+main: com.macemanager.MaceManagerPlugin
+api-version: '1.21'
+description: Limits how many maces exist and applies a configurable mace cooldown.
+softdepend:
+  - LuckPerms
+commands:
+  maces:
+    description: Show who has a mace, and manage the limit and cooldown.
+    usage: /maces
+permissions:
+  macemanager.admin:
+    description: All MaceManager commands.
+    default: op
+    children:
+      macemanager.command.list: true
+      macemanager.command.reload: true
+      macemanager.command.setlimit: true
+      macemanager.command.setcooldown: true
+      macemanager.command.enchanting: true
+      macemanager.command.remove: true
+      macemanager.command.giveuntracked: true
+      macemanager.command.clearuntracked: true
+  macemanager.command.list:
+    description: List who has a mace.
+    default: op
+  macemanager.command.reload:
+    description: Reload MaceManager config.
+    default: op
+  macemanager.command.setlimit:
+    description: Set the server mace limit.
+    default: op
+  macemanager.command.setcooldown:
+    description: Set the base mace cooldown.
+    default: op
+  macemanager.command.enchanting:
+    description: Turn mace enchanting on or off.
+    default: op
+  macemanager.command.remove:
+    description: Invalidate a tracked mace and sweep loaded inventories; reports completion later.
+    default: op
+  macemanager.command.giveuntracked:
+    description: Give a mace that ignores the limit.
+    default: op
+  macemanager.command.clearuntracked:
+    description: Sweep loaded inventories for admin maces; reports completion later.
+    default: op
+  macemanager.bypass.cooldown:
+    description: Mace hits do not start or wait for the cooldown.
+    default: op

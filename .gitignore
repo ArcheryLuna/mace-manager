@@ -1,0 +1,72 @@
+# Gradle caches and generated build output
+.gradle/
+build/
+out/
+bin/
+*.class
+
+# Keep the Gradle wrapper scripts, properties, and JAR versioned.
+# Do not add a blanket *.jar rule.
+
+# IntelliJ IDEA / Android Studio
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Eclipse / VS Code Java
+.classpath
+.project
+.settings/
+.factorypath
+.vscode/
+
+# Local Minecraft development servers and player data
+/run/
+/server/
+/test-server/
+/plugins/
+/world/
+/world_nether/
+/world_the_end/
+/logs/
+/crash-reports/
+/backups/
+/cache/
+/libraries/
+/versions/
+/server.properties
+/eula.txt
+/ops.json
+/whitelist.json
+/banned-players.json
+/banned-ips.json
+/usercache.json
+/bukkit.yml
+/spigot.yml
+/paper.yml
+/permissions.yml
+
+# Runtime logs, JVM crashes, and heap dumps
+*.log
+*.log.gz
+hs_err_pid*
+replay_pid*
+*.hprof
+*.jfr
+
+# Local environment and machine-specific settings
+.env
+.env.*
+!.env.example
+!.env.sample
+local.properties
+
+# Editor temporary files and operating system metadata
+*.swp
+*.swo
+*~
+.DS_Store
+._*
+Thumbs.db
+Desktop.ini

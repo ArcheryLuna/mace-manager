@@ -1,0 +1,77 @@
+# Maximum number of tracked maces on the server.
+# Offline players still count. Lowering this does not delete existing maces.
+allowed-maces: 3
+
+# When false, maces cannot be placed in an enchanting table or an anvil.
+allow-mace-enchanting: true
+
+cooldown:
+  enabled: true
+  # Seconds added after a real main-hand mace swing. Enchantment modifiers are added on top.
+  # Thorns never starts this cooldown, and a cooldown never cancels Thorns damage.
+  base-seconds: 120
+  minimum-seconds: 0
+  maximum-seconds: 600
+  # Seconds added or removed per level on the mace. Negative numbers shorten the cooldown.
+  # Set a value to 0 to ignore that enchantment.
+  mace-enchantments:
+    density: 0
+    breach: 0
+    wind_burst: 0
+  # Seconds added or removed per level on each worn armor piece.
+  # Protection IV on a helmet and a chestplate counts as two pieces.
+  armor-enchantments:
+    protection: 0
+    blast_protection: 0
+    projectile_protection: 0
+    fire_protection: 0
+    feather_falling: 0
+
+# Optional wind-charge cooldown. It does not use the enchantment modifiers.
+wind-charge:
+  enabled: false
+  seconds: 30
+
+# Scan budgets are cooperative: a single inventory or chunk query can exceed the time limit.
+performance:
+  scan-units-per-tick: 32
+  scan-budget-ms: 2.0
+  # Event-driven checks run every 20 ticks; full audits catch commands/other plugins.
+  full-audit-ticks: 1200
+  # Enable only after measuring registry latency. Requires a plugin/server restart.
+  async-registry-writes: false
+  # Optional Paper snapshot-free states; Bukkit/Spigot fall back automatically.
+  paper-direct-states: false
+  # Log observed maximum scan/audit/write durations on disable.
+  log-timings: false
+
+messages:
+  prefix: "&6[MaceManager]&r "
+  crafted-broadcast: "&a%player% &7crafted a mace. &7(%current%/%max%)"
+  destroyed-broadcast: "&cA mace was destroyed. &7(last held by &f%lastHolder%&7) &7(%current%/%max%)"
+  containers-blocked: "&cYou can't put the mace in any container."
+  limit-reached: "&cMace limit reached. A mace must be destroyed before another can be crafted."
+  illegal-removed: "&cAn illegal mace was removed."
+  enchanting-blocked: "&cMaces cannot be enchanted."
+  reload: "&aMaceManager config reloaded."
+  no-permission: "&cYou don't have permission."
+  cooldown-applied: "&cMace cooldown: &f%seconds%s"
+  cooldown-active: "&cMace is on cooldown for &f%seconds%s&c."
+  wind-charge-active: "&cWind charge is on cooldown for &f%seconds%s&c."
+  list-header: "&6Maces: &f%current%&7/&f%max%"
+  list-holder: "&7- &f%player% &7(%state%) &8%id%"
+  list-without: "&7- &f%player% &7has no mace"
+  list-none: "&7No tracked maces."
+  setlimit: "&aMace limit set to &f%limit%&a."
+  setcooldown: "&aBase mace cooldown set to &f%seconds%s&a."
+  enchanting-on: "&aMace enchanting enabled."
+  enchanting-off: "&cMace enchanting disabled."
+  sweep-started: "&7Removal queued. Completion will be reported after the loaded-world sweep."
+  sweep-failed: "&cRemoval sweep failed; check the server log before retrying."
+  removed: "&aRemoved mace &f%id%&a."
+  not-found: "&cNo mace with that id."
+  ambiguous-id: "&cThat id matches more than one mace."
+  gave-untracked: "&aGave an untracked mace."
+  cleared-untracked: "&aRemoved &f%amount% &auntracked mace(s)."
+  players-only: "&cOnly players can use that command."
+  usage: "&cUsage: &f%usage%"
