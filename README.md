@@ -1,0 +1,222 @@
+# MaceManager
+
+Control how many maces exist on your Minecraft server and how often players can
+use them. MaceManager tracks mace ownership, enforces a configurable server-wide
+limit, and applies cooldowns based on mace and armor enchantments.
+
+## Features
+
+- **Server-wide mace limit:** allow up to three tracked maces by default. Offline
+  owners still count toward the limit.
+- **Ownership tracking:** keep track of holders and dropped maces across restarts.
+- **Duplicate enforcement:** audit loaded player inventories and ground items,
+  removing illegal maces and duplicate tracked identities.
+- **Storage restrictions:** block maces from containers, bundles of every color,
+  item frames, armor stands, and decorated pots. Automated crafters cannot create
+  maces.
+- **Configurable combat cooldowns:** adjust the base duration and add or subtract
+  seconds for enchantments on the mace and each worn armor piece.
+- **Optional wind-charge cooldown:** configure a separate delay between launches.
+- **Enchanting controls:** toggle mace access to anvils and enchanting tables.
+- **Administration:** list holders, change limits, remove tracked maces, and issue
+  special maces that do not count toward the limit.
+- **Custom messages:** edit broadcasts, feedback, and action-bar messages in YAML.
+
+## Requirements and compatibility
+
+- Java 21.
+- A Minecraft server providing the Bukkit/Spigot plugin API. The default build
+  targets Paper 1.21.4 and aims to preserve Bukkit/Spigot compatibility.
+- LuckPerms is optional; see [Permissions](#permissions) for its effect.
+
+The code compiles and all 40 regression tests pass against both the Paper 1.21.4
+and 1.21.11 APIs. Listener tests use mocked server objects. Live Minecraft server
+behavior, actual inventory transactions, and compatibility with other plugins have
+not been verified by those checks. Bukkit/Spigot compatibility also requires
+validation on those server implementations.
+
+## Installation
+
+1. Build the plugin using the instructions below, or obtain a trusted prebuilt JAR.
+2. Stop your server and place `MaceManager-1.0.0.jar` in its `plugins/` folder.
+3. Start the server to generate `plugins/MaceManager/config.yml`.
+4. Edit the settings, then run `/maces reload` to apply them. Changes to
+   `performance.async-registry-writes` require a restart.
+5. Run `/maces` as an authorized administrator to view tracked maces.
+
+**Existing maces:** ordinary maces created before installation or through vanilla
+`/give` do not have a registered MaceManager identity and can be removed by cleanup.
+Back up an existing world before enabling enforcement. Use
+`/maces giveuntracked` when an administrator needs a mace outside the tracked limit.
+
+## Configuration
+
+The complete defaults, comments, and message keys are in
+[`config.yml`](src/main/resources/config.yml). This example shows the main options
+with their default values:
+
+```yaml
+allowed-maces: 3
+allow-mace-enchanting: true
+
+cooldown:
+  enabled: true
+  base-seconds: 120
+  minimum-seconds: 0
+  maximum-seconds: 600
+  mace-enchantments:
+    density: 0
+    breach: 0
+    wind_burst: 0
+  armor-enchantments:
+    protection: 0
+    blast_protection: 0
+    projectile_protection: 0
+    fire_protection: 0
+    feather_falling: 0
+
+wind-charge:
+  enabled: false
+  seconds: 30
+```
+
+### Limits and storage
+
+`allowed-maces` controls the number of registered maces across the server, including
+offline owners. Setting it to `0` blocks new tracked crafts. Lowering it does not
+delete existing registered maces. Once the limit is reached, further crafting is
+blocked until a tracked mace is destroyed or removed, or the limit is raised.
+
+Players can carry maces and use grindstones. Anvils and enchanting tables are
+available when `allow-mace-enchanting` is `true`. Other inventory types are blocked
+for mace storage. Cleanup extracts nested maces from player-held bundles and
+shulker boxes and releases maces found in loaded containers.
+
+Administrator-issued untracked maces bypass the count and tracked-ID enforcement;
+they still follow storage restrictions and cooldown rules.
+
+### Cooldown calculation
+
+A successful main-hand mace attack starts a cooldown calculated as:
+
+```text
+base seconds
++ sum of (mace enchantment level × configured seconds per level)
++ sum of (enchantment level × configured seconds per level) on each armor piece
+```
+
+For example, a base of `120`, a `density` rate of `5`, and Density III produce a
+135-second cooldown before armor modifiers are applied.
+
+- Positive rates increase the duration; negative rates reduce it.
+- A rate of `0` ignores that enchantment.
+- A total of zero or less starts no cooldown, even if the configured minimum is
+  positive. Positive totals are clamped to the configured minimum and maximum.
+- Thorns damage neither starts nor refreshes the cooldown and is not blocked by it.
+- Other weapons remain usable during a mace cooldown.
+- Cooldowns survive reconnecting while the plugin remains running. They are held
+  in memory and do not persist across server restarts.
+
+Wind charges use their own fixed duration and do not use enchantment modifiers.
+The mace cooldown bypass permission does not bypass the wind-charge cooldown.
+
+### Messages and performance
+
+Edit the `messages` section to customize feedback. Messages support `&` color
+codes and the placeholders shown in the defaults, such as `%player%`, `%seconds%`,
+`%current%`, and `%max%`.
+
+The `performance` section controls cooperative scan budgets, audit frequency,
+optional background registry writes, optional Paper block-state queries, and timing
+logs. A scan unit can exceed its time budget; the budget is not a hard tick-time
+limit. See [OPTIMIZATION_REVIEW.md](OPTIMIZATION_REVIEW.md) for implementation
+details and validation limits.
+
+## Commands
+
+| Command | Description |
+| --- | --- |
+| `/maces` | Show the tracked count, mace IDs, and holder information. |
+| `/maces reload` | Reload configuration and refresh mace recipes. |
+| `/maces setlimit <amount>` | Set the maximum number of tracked maces. |
+| `/maces setcooldown <seconds>` | Set the base mace cooldown. |
+| `/maces enchanting <on\|off>` | Toggle mace use in anvils and enchanting tables. |
+| `/maces remove <id>` | Invalidate a tracked mace and queue removal from loaded inventories and entities. |
+| `/maces giveuntracked` | Give yourself an administrator mace that does not count toward the limit; players only. |
+| `/maces clearuntracked` | Queue a sweep to remove administrator-issued untracked maces from loaded inventories and entities. |
+
+Numeric arguments must be nonnegative whole numbers. `remove` accepts a full UUID
+or an unambiguous prefix, including the short ID shown by `/maces`.
+
+Removal sweeps report completion after queued work finishes. They do not directly
+edit offline player files or scan unloaded chunks. An invalidated tracked mace is
+subject to normal cleanup when encountered later. `clearuntracked` only removes
+matching items encountered by its loaded-world sweep.
+
+## Permissions
+
+All declared permissions default to operators. With LuckPerms enabled, player
+checks use Bukkit's `hasPermission` result, including explicit grants or denials.
+Without LuckPerms, player access falls back to operator status. Non-player command
+senders pass the permission check, although `giveuntracked` requires a player.
+
+| Permission | Access |
+| --- | --- |
+| `macemanager.admin` | All commands below; does not include the cooldown bypass. |
+| `macemanager.command.list` | `/maces` |
+| `macemanager.command.reload` | `/maces reload` |
+| `macemanager.command.setlimit` | `/maces setlimit` |
+| `macemanager.command.setcooldown` | `/maces setcooldown` |
+| `macemanager.command.enchanting` | `/maces enchanting` |
+| `macemanager.command.remove` | `/maces remove` |
+| `macemanager.command.giveuntracked` | `/maces giveuntracked` |
+| `macemanager.command.clearuntracked` | `/maces clearuntracked` |
+| `macemanager.bypass.cooldown` | Mace attacks neither start nor wait for a mace cooldown. |
+
+Operators bypass mace cooldowns by default. With LuckPerms enabled, explicitly deny
+`macemanager.bypass.cooldown` to an operator if they should follow the cooldown.
+
+## Building and testing
+
+Use the checked-in Gradle wrapper with a discoverable Java 21 JDK:
+
+```powershell
+# Windows
+.\gradlew.bat test build
+```
+
+```sh
+# Linux/macOS
+./gradlew test build
+```
+
+The resulting JAR is written to `build/libs/MaceManager-1.0.0.jar`. Test reports are
+written to `build/reports/tests/test/index.html`. The first build needs network
+access to download Gradle and dependencies.
+
+To compile and run the suite against the Paper 1.21.11 API:
+
+```powershell
+.\gradlew.bat test build '-PpaperApiVersion=1.21.11-R0.1-SNAPSHOT'
+```
+
+```sh
+./gradlew test build -PpaperApiVersion=1.21.11-R0.1-SNAPSHOT
+```
+
+Omitting the property keeps the default Paper 1.21.4 target. Neither command starts
+a Minecraft server.
+
+## Contributing and security
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before submitting changes. Contributor
+credits are recorded in [CONTRIBUTORS.md](CONTRIBUTORS.md).
+
+For ordinary bug reports, include the plugin version, server implementation and
+version, Java version, reproduction steps, and sanitized logs. Follow
+[SECURITY.md](SECURITY.md) for private vulnerability reporting.
+
+## License
+
+MaceManager is licensed under **GPL-3.0-only**. See [LICENSE](LICENSE) and the
+[contribution guide](CONTRIBUTING.md#license-and-credit) for terms.
