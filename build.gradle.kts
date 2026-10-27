@@ -3,7 +3,7 @@ plugins {
 }
 
 group = "com.macemanager"
-version = "1.0.0"
+version = "1.0.1"
 
 java {
     toolchain {
@@ -40,6 +40,7 @@ tasks.test {
 
 tasks.processResources {
     val pluginVersion = project.version
+    inputs.property("pluginVersion", pluginVersion)
     filesMatching("plugin.yml") {
         expand("version" to pluginVersion)
     }
