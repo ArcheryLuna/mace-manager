@@ -1,18 +1,12 @@
 package com.macemanager.limit;
 
 import org.bukkit.Location;
-import org.bukkit.configuration.ConfigurationSection;
-import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.AtomicMoveNotSupportedException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -31,7 +25,7 @@ import java.util.logging.Logger;
 public final class MaceRegistry {
     private final Logger logger;
     private final Consumer<Runnable> schedule;
-    private final File file;
+    private final SqliteMaceStore store;
     private final Map<UUID, MaceRecord> maces = new LinkedHashMap<>();
     private long revision;
     private final AtomicLong persistedRevision = new AtomicLong();
@@ -42,7 +36,7 @@ public final class MaceRegistry {
     private boolean saveScheduled;
 
     public MaceRegistry(JavaPlugin plugin, boolean asynchronous) {
-        this(new File(plugin.getDataFolder(), "maces.yml"), plugin.getLogger(),
+        this(new File(plugin.getDataFolder(), "maces.db"), plugin.getLogger(),
                 task -> plugin.getServer().getScheduler().runTask(plugin, task), asynchronous);
     }
 
@@ -59,41 +53,28 @@ public final class MaceRegistry {
     }
 
     MaceRegistry(File file, Logger logger, Consumer<Runnable> schedule, ExecutorService writer) {
-        this.file = file;
+        this.store = new SqliteMaceStore(file);
         this.logger = logger;
         this.schedule = schedule;
         this.writer = writer;
     }
 
     public void load() {
-        maces.clear();
-        revision = 0;
-        persistedRevision.set(0);
-        if (!file.exists()) {
-            return;
+        if (closed || revision != 0 || pendingWrite != null) {
+            throw new IllegalStateException("Registry can only be loaded before mutations");
         }
-        YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file);
-        ConfigurationSection section = yaml.getConfigurationSection("maces");
-        if (section == null) {
-            return;
-        }
-        for (String key : section.getKeys(false)) {
-            try {
-                UUID id = UUID.fromString(key);
-                String holderRaw = section.getString(key + ".holder", "");
-                UUID holder = holderRaw == null || holderRaw.isBlank() ? null : UUID.fromString(holderRaw);
-                MaceRecord record = new MaceRecord(id, holder, section.getString(key + ".holder-name", "unknown"));
-                if (section.getBoolean(key + ".dropped", false)) {
-                    record.setDrop(
-                            section.getString(key + ".drop-world"),
-                            section.getInt(key + ".drop-chunk-x"),
-                            section.getInt(key + ".drop-chunk-z")
-                    );
-                }
-                maces.put(id, record);
-            } catch (IllegalArgumentException exception) {
-                logger.warning("Skipping invalid mace id " + key);
+        try {
+            List<MaceSnapshot> records = store.load();
+            maces.clear();
+            for (MaceSnapshot snapshot : records) {
+                MaceRecord record = snapshot.record();
+                maces.put(record.id(), record);
             }
+            persistedRevision.set(0);
+        } catch (IOException | SQLException exception) {
+            // Abort startup before registering cleanup listeners. An empty registry
+            // after a read failure would misclassify legitimate maces as illegal.
+            throw new IllegalStateException("Could not load maces.db or import maces.yml; tracking was not started", exception);
         }
     }
 
@@ -106,9 +87,7 @@ public final class MaceRegistry {
             return;
         }
         // Copy primitive/string/UUID values on the server thread, never mutable records.
-        List<Snapshot> snapshot = maces.values().stream().map(record -> new Snapshot(
-                record.id(), record.holder(), record.holderName(), record.dropped(),
-                record.dropWorld(), record.dropChunkX(), record.dropChunkZ())).toList();
+        List<MaceSnapshot> snapshot = maces.values().stream().map(MaceSnapshot::from).toList();
         long version = revision;
         if (writer == null) {
             write(snapshot, version);
@@ -159,43 +138,15 @@ public final class MaceRegistry {
         }
     }
 
-    private void write(List<Snapshot> snapshot, long version) {
+    private void write(List<MaceSnapshot> snapshot, long version) {
         long start = System.nanoTime();
-        YamlConfiguration yaml = new YamlConfiguration();
-        for (Snapshot record : snapshot) {
-            String path = "maces." + record.id();
-            yaml.set(path + ".holder", record.holder() == null ? "" : record.holder().toString());
-            yaml.set(path + ".holder-name", record.holderName());
-            yaml.set(path + ".dropped", record.dropped());
-            if (record.dropped()) {
-                yaml.set(path + ".drop-world", record.dropWorld());
-                yaml.set(path + ".drop-chunk-x", record.dropChunkX());
-                yaml.set(path + ".drop-chunk-z", record.dropChunkZ());
-            }
-        }
-        Path temporary = null;
         try {
-            Path target = file.toPath().toAbsolutePath();
-            Files.createDirectories(target.getParent());
-            temporary = Files.createTempFile(target.getParent(), "maces-", ".tmp");
-            Files.writeString(temporary, yaml.saveToString(), StandardCharsets.UTF_8);
-            try {
-                Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-            } catch (AtomicMoveNotSupportedException exception) {
-                Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
-            }
+            store.write(snapshot);
             persistedRevision.set(version);
-        } catch (IOException exception) {
-            logger.warning("Could not save maces.yml: " + exception.getMessage());
+        } catch (SQLException exception) {
+            logger.warning("Could not save maces.db: " + exception.getMessage());
         } finally {
             maximumWriteNanos.accumulateAndGet(System.nanoTime() - start, Math::max);
-            if (temporary != null) {
-                try {
-                    Files.deleteIfExists(temporary);
-                } catch (IOException exception) {
-                    logger.warning("Could not remove temporary registry file: " + exception.getMessage());
-                }
-            }
         }
     }
 
@@ -213,10 +164,6 @@ public final class MaceRegistry {
                 save();
             });
         }
-    }
-
-    private record Snapshot(UUID id, UUID holder, String holderName, boolean dropped,
-                            String dropWorld, int dropChunkX, int dropChunkZ) {
     }
 
     public int count() {

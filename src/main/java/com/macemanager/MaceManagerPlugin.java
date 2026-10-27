@@ -22,6 +22,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
 
 import java.util.UUID;
+import java.util.logging.Level;
 
 public final class MaceManagerPlugin extends JavaPlugin {
     private PluginConfig settings;
@@ -48,7 +49,13 @@ public final class MaceManagerPlugin extends JavaPlugin {
         maceItems = new MaceItems(this);
         chunkAccess = new ChunkAccess(settings.directChunkStates());
         registry = new MaceRegistry(this, settings.asyncRegistryWrites());
-        registry.load();
+        try {
+            registry.load();
+        } catch (IllegalStateException exception) {
+            getLogger().log(Level.SEVERE, "Cannot initialize mace storage; disabling MaceManager before enforcement starts", exception);
+            getServer().getPluginManager().disablePlugin(this);
+            return;
+        }
         announcements = new MaceAnnouncements(this);
         recipes = new RecipeService(this);
         recipes.capture();

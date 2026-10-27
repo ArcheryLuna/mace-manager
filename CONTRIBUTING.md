@@ -43,6 +43,8 @@ dispatch, real inventory transactions, or interactions with other plugins.
 - Follow the existing Java style, package structure, and naming conventions.
 - Keep Bukkit inventory, entity, world, and registry mutations on the server
   thread. Do not move Bukkit API calls to background tasks for performance.
+- Persist tracked records in SQLite (`maces.db`). Preserve transactional writes,
+  one-time YAML migration, failed-write retries, and ordered shutdown flushing.
 - Preserve tracked mace IDs, duplicate detection, offline ownership, configurable
   limits, permission checks, and cooldown behavior.
 - Keep configuration defaults and `plugin.yml` consistent with behavior changes.
@@ -56,6 +58,10 @@ Run the relevant tests and build before submitting code. For inventory, crafting
 event, or permission changes, also test on a Minecraft server when available.
 State the server implementation/version and relevant plugin combinations tested.
 Unit tests alone do not establish live-server compatibility.
+
+Persistence tests use actual SQLite files in temporary directories. Packaging
+tests open a database using only the built JAR and JDK classes, checking that the
+bundled driver works without server-supplied dependencies.
 
 Describe the resulting behavior, why it changed, and the validation performed.
 Clearly identify checks that could not be run. Performance claims should include

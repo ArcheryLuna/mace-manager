@@ -52,7 +52,8 @@ performance:
   scan-budget-ms: 2.0
   # Event-driven checks run every 20 ticks; full audits catch commands/other plugins.
   full-audit-ticks: 1200
-  # Enable only after measuring registry latency. Requires a plugin/server restart.
+  # SQLite writes are batched until the next tick. Enable background writes only
+  # after measuring registry latency. Requires a plugin/server restart.
   async-registry-writes: false
   # Optional Paper snapshot-free states; Bukkit/Spigot fall back automatically.
   paper-direct-states: false

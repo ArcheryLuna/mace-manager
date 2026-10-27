@@ -2,7 +2,7 @@ name: MaceManager
 version: '${version}'
 main: com.macemanager.MaceManagerPlugin
 api-version: '1.21'
-description: Limits how many maces exist and applies a configurable mace cooldown.
+description: Tracks maces in SQLite, enforces configurable limits, and applies mace cooldowns.
 softdepend:
   - LuckPerms
 commands:

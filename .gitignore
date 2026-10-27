@@ -47,6 +47,13 @@ bin/
 /paper.yml
 /permissions.yml
 
+# Local mace registry data and SQLite transaction sidecars
+maces.yml
+maces.db
+maces.db-journal
+maces.db-wal
+maces.db-shm
+
 # Runtime logs, JVM crashes, and heap dumps
 *.log
 *.log.gz

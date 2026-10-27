@@ -7,7 +7,8 @@ limit, and applies cooldowns based on mace and armor enchantments.
 ## Features
 
 - **Server-wide mace limit:** unlimited by default, matching vanilla. Set `allowed-maces` to a positive number to cap tracked maces. Offline owners still count toward a cap.
-- **Ownership tracking:** keep track of holders and dropped maces across restarts.
+- **SQLite ownership tracking:** keep track of holders and dropped maces across
+  restarts in a local database, with automatic import from older YAML registries.
 - **Duplicate enforcement:** audit loaded player inventories and ground items,
   removing illegal maces and duplicate tracked identities.
 - **Storage restrictions:** while a mace limit is set, block maces from containers, bundles of every color, item frames, armor stands, and decorated pots. Automated crafters cannot create maces.
@@ -44,6 +45,42 @@ validation on those server implementations.
 `/give` do not have a registered MaceManager identity and can be removed by cleanup.
 Back up an existing world before enabling enforcement. Use
 `/maces giveuntracked` when an administrator needs a mace outside the tracked limit.
+
+## Tracked mace storage
+
+Tracking records are stored in `plugins/MaceManager/maces.db`, a local SQLite
+database. No external database server or credentials are needed; the JDBC driver
+and native libraries are bundled in the plugin JAR. Configuration and messages
+remain in `config.yml`.
+
+Each tracked mace keeps its UUID in persistent item metadata. The database stores
+that UUID, the holder's UUID and last known name, and the world/chunk coordinates
+when dropped. It does not store or restore the physical item, enchantments, or
+player inventory. Those remain part of Minecraft's world/player data.
+
+Changes update the in-memory registry immediately and are batched for a
+transactional save on the next tick. Failed saves retain dirty state for retries.
+Shutdown drains pending writes and attempts to save the latest state. Optional
+`performance.async-registry-writes` uses one ordered background writer.
+
+### Upgrading from maces.yml
+
+1. Stop the server and back up its world/player data and MaceManager folder.
+2. Install the updated JAR, keeping the existing `maces.yml` in the plugin folder.
+3. Start the server. The database is initialized and imports all legacy records in
+   one transaction before tracking or cleanup listeners start.
+
+The old YAML file is left untouched as an import source. After successful
+initialization, SQLite is authoritative; editing `maces.yml` has no effect. Even an
+empty database is marked initialized, preventing stale YAML records from being
+imported again. Removing the database would discard this marker and allow the old
+file to be imported on the next startup.
+
+If migration or database loading fails, plugin startup aborts before enforcement
+begins. Correct the logged problem and restart; there is no fallback to an empty
+registry. For backups, stop the server cleanly and copy the plugin data folder
+alongside the corresponding world/player data. Downgrading to a YAML-based release
+requires a separate export; the retained YAML is not updated after migration.
 
 ## Configuration
 
@@ -225,3 +262,8 @@ version, Java version, reproduction steps, and sanitized logs. Follow
 
 MaceManager is licensed under **GPL-3.0-only**. See [LICENSE](LICENSE) and the
 [contribution guide](CONTRIBUTING.md#license-and-credit) for terms.
+
+The bundled [Xerial SQLite JDBC driver](https://github.com/xerial/sqlite-jdbc) is
+distributed under Apache-2.0 with BSD-2-Clause notices for its inherited code.
+The driver license files are retained under
+`META-INF/maven/org.xerial/sqlite-jdbc/` in the built JAR.

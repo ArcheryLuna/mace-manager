@@ -7,6 +7,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
+import java.sql.Connection;
+import java.sql.DriverManager;
 import java.nio.file.Path;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
@@ -34,14 +36,14 @@ class MaceRegistryTest {
         registry.remove(first);
         registry.remove(second);
         assertEquals(1, tasks.size());
-        assertEquals(2, YamlConfiguration.loadConfiguration(file.toFile()).getConfigurationSection("maces").getKeys(false).size());
+        assertEquals(2, storedCount(file));
 
         tasks.removeFirst().run();
         MaceRegistry reloaded = registry(file, tasks);
         reloaded.load();
         assertEquals(0, reloaded.count());
         try (var files = Files.list(directory)) {
-            assertEquals(List.of(file), files.toList());
+            assertEquals(2, files.count()); // Database and untouched YAML import source.
         }
     }
 
@@ -54,12 +56,12 @@ class MaceRegistryTest {
         registry.load();
         registry.remove(id);
         registry.save();
-        String saved = Files.readString(file);
+        byte[] saved = Files.readAllBytes(file);
         var timestamp = Files.getLastModifiedTime(file);
 
         tasks.removeFirst().run();
         registry.save();
-        assertEquals(saved, Files.readString(file));
+        assertArrayEquals(saved, Files.readAllBytes(file));
         assertEquals(timestamp, Files.getLastModifiedTime(file));
     }
 
@@ -71,7 +73,8 @@ class MaceRegistryTest {
         MaceRegistry registry = registry(file, tasks);
         registry.load();
         registry.remove(id);
-        Files.delete(file);
+        Path savedDatabase = directory.resolve("saved.db");
+        Files.move(file, savedDatabase);
         Files.createDirectory(file);
         Path blocker = Files.writeString(file.resolve("blocker"), "keep");
 
@@ -79,9 +82,10 @@ class MaceRegistryTest {
         assertTrue(Files.exists(blocker));
         Files.delete(blocker);
         Files.delete(file);
+        Files.move(savedDatabase, file);
         registry.save();
         assertTrue(Files.isRegularFile(file));
-        assertEquals(0, YamlConfiguration.loadConfiguration(file.toFile()).getKeys(false).size());
+        assertEquals(0, storedCount(file));
     }
 
     @Test
@@ -152,16 +156,14 @@ class MaceRegistryTest {
             registry.markDropped(id, new Location(world, 160, 64, 320));
             registry.save(); // Must not queue an unbounded backlog of snapshots.
             release.countDown();
-            int firstChunk = writer.submit(() -> YamlConfiguration.loadConfiguration(file.toFile())
-                    .getInt("maces." + id + ".drop-chunk-x")).get(10, TimeUnit.SECONDS);
+            int firstChunk = writer.submit(() -> storedChunk(file, id, "drop_chunk_x")).get(10, TimeUnit.SECONDS);
             assertEquals(1, firstChunk);
             registry.close();
-            var yaml = YamlConfiguration.loadConfiguration(file.toFile());
-            assertEquals(10, yaml.getInt("maces." + id + ".drop-chunk-x"));
-            assertEquals(20, yaml.getInt("maces." + id + ".drop-chunk-z"));
+            assertEquals(10, storedChunk(file, id, "drop_chunk_x"));
+            assertEquals(20, storedChunk(file, id, "drop_chunk_z"));
             assertTrue(writer.isShutdown());
             tasks.forEach(Runnable::run); // Scheduled callbacks after close cannot write stale state.
-            assertEquals(10, YamlConfiguration.loadConfiguration(file.toFile()).getInt("maces." + id + ".drop-chunk-x"));
+            assertEquals(10, storedChunk(file, id, "drop_chunk_x"));
         } finally {
             release.countDown();
             registry.close();
@@ -178,7 +180,8 @@ class MaceRegistryTest {
         try {
             registry.load();
             registry.remove(id);
-            Files.delete(file);
+            Path savedDatabase = directory.resolve("saved.db");
+            Files.move(file, savedDatabase);
             Files.createDirectory(file);
             Path blocker = Files.writeString(file.resolve("blocker"), "keep");
             registry.save();
@@ -186,9 +189,10 @@ class MaceRegistryTest {
             assertTrue(Files.exists(blocker));
             Files.delete(blocker);
             Files.delete(file);
+            Files.move(savedDatabase, file);
             registry.close();
             assertTrue(Files.isRegularFile(file));
-            assertTrue(YamlConfiguration.loadConfiguration(file.toFile()).getKeys(false).isEmpty());
+            assertEquals(0, storedCount(file));
         } finally {
             registry.close();
             writer.shutdownNow();
@@ -199,14 +203,36 @@ class MaceRegistryTest {
         return new MaceRegistry(file.toFile(), Logger.getLogger("MaceRegistryTest"), tasks::add);
     }
 
+    private int storedCount(Path file) throws Exception {
+        try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + file);
+             var statement = connection.createStatement();
+             var result = statement.executeQuery("SELECT COUNT(*) FROM maces")) {
+            result.next();
+            return result.getInt(1);
+        }
+    }
+
+    private int storedChunk(Path file, UUID id, String column) throws Exception {
+        // Column names are fixed test constants; record values are parameters.
+        try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + file);
+             var statement = connection.prepareStatement("SELECT " + column + " FROM maces WHERE id = ?")) {
+            statement.setString(1, id.toString());
+            try (var result = statement.executeQuery()) {
+                assertTrue(result.next());
+                return result.getInt(1);
+            }
+        }
+    }
+
     private Path fixture(UUID... ids) throws Exception {
         YamlConfiguration yaml = new YamlConfiguration();
         for (UUID id : ids) {
             yaml.set("maces." + id + ".holder", UUID.randomUUID().toString());
             yaml.set("maces." + id + ".holder-name", "Player");
         }
-        Path file = directory.resolve("maces.yml");
-        yaml.save(file.toFile());
+        yaml.save(directory.resolve("maces.yml").toFile());
+        Path file = directory.resolve("maces.db");
+        new SqliteMaceStore(file.toFile()).load();
         return file;
     }
 }
