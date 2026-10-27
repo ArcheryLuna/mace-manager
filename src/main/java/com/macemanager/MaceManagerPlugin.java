@@ -87,7 +87,8 @@ public final class MaceManagerPlugin extends JavaPlugin {
             }
             if (ticksSinceAudit % 100 == 0) registry.save(); // Retry failed writes even without mutations.
         }, 1L, 1L);
-        getLogger().info("Tracking " + registry.count() + "/" + settings.allowedMaces() + " maces.");
+        String limit = settings.hasMaceLimit() ? Integer.toString(settings.allowedMaces()) : "unlimited";
+        getLogger().info("Tracking " + registry.count() + "/" + limit + " maces.");
     }
 
     @Override

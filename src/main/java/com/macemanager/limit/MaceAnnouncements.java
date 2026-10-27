@@ -14,6 +14,9 @@ public final class MaceAnnouncements {
     }
 
     public void crafted(String playerName) {
+        if (!plugin.settings().broadcastCrafted()) {
+            return;
+        }
         broadcast("crafted-broadcast", playerName, playerName);
     }
 
@@ -26,7 +29,7 @@ public final class MaceAnnouncements {
                 "player", playerName,
                 "lastHolder", lastHolder,
                 "current", Integer.toString(plugin.registry().count()),
-                "max", Integer.toString(plugin.settings().allowedMaces()),
+                "max", plugin.settings().maceLimitLabel(),
                 "amount", "1"
         ));
         Bukkit.broadcastMessage(Notices.color(message));

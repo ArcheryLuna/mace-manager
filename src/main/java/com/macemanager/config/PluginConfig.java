@@ -14,12 +14,12 @@ import java.util.Map;
 
 public final class PluginConfig {
     private final JavaPlugin plugin;
-    private int allowedMaces = 3;
+    private int allowedMaces = -1;
     private boolean allowMaceEnchanting = true;
-    private boolean broadcastCrafted = true;
-    private boolean cooldownEnabled = true;
+    private boolean broadcastCrafted;
+    private boolean cooldownEnabled;
     private boolean ignoreThorns = true;
-    private int baseSeconds = 120;
+    private int baseSeconds;
     private int minimumSeconds;
     private int maximumSeconds = 600;
     private Map<String, Integer> maceEnchantments = Map.of();
@@ -43,12 +43,13 @@ public final class PluginConfig {
 
     public void load() {
         FileConfiguration config = plugin.getConfig();
-        allowedMaces = Math.max(0, config.getInt("allowed-maces", 3));
+        int configuredLimit = config.getInt("allowed-maces", -1);
+        allowedMaces = configuredLimit < 0 ? -1 : configuredLimit;
         allowMaceEnchanting = config.getBoolean("allow-mace-enchanting", true);
-        broadcastCrafted = config.getBoolean("broadcasts.crafted", true);
-        cooldownEnabled = config.getBoolean("cooldown.enabled", true);
+        broadcastCrafted = config.getBoolean("broadcasts.crafted", false);
+        cooldownEnabled = config.getBoolean("cooldown.enabled", false);
         ignoreThorns = config.getBoolean("cooldown.ignore-thorns", true);
-        baseSeconds = Math.max(0, config.getInt("cooldown.base-seconds", 120));
+        baseSeconds = Math.max(0, config.getInt("cooldown.base-seconds", 0));
         minimumSeconds = Math.max(0, config.getInt("cooldown.minimum-seconds", 0));
         maximumSeconds = config.getInt("cooldown.maximum-seconds", 600);
         if (maximumSeconds < minimumSeconds) {
@@ -83,7 +84,7 @@ public final class PluginConfig {
     }
 
     public void setAllowedMaces(int amount) {
-        allowedMaces = Math.max(0, amount);
+        allowedMaces = amount < 0 ? -1 : amount;
         if (persist("allowed-maces", Integer.toString(allowedMaces))) {
             load();
         }
@@ -117,6 +118,14 @@ public final class PluginConfig {
 
     public int allowedMaces() {
         return allowedMaces;
+    }
+
+    public boolean hasMaceLimit() {
+        return allowedMaces >= 0;
+    }
+
+    public String maceLimitLabel() {
+        return hasMaceLimit() ? Integer.toString(allowedMaces) : "unlimited";
     }
 
     public boolean allowMaceEnchanting() {

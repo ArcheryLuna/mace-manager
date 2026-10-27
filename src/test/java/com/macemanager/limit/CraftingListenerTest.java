@@ -37,6 +37,7 @@ class CraftingListenerTest {
         when(plugin.recipes()).thenReturn(mock(RecipeService.class));
         when(plugin.announcements()).thenReturn(mock(MaceAnnouncements.class));
         when(settings.allowedMaces()).thenReturn(3);
+        when(settings.hasMaceLimit()).thenReturn(true);
         when(settings.format("limit-reached")).thenReturn("Limit reached");
         when(player.getName()).thenReturn("Crafter");
         when(player.getInventory()).thenReturn(inventory);

@@ -59,7 +59,7 @@ public final class RecipeService {
 
     public void sync() {
         syncScheduled = false;
-        if (plugin.registry().count() >= plugin.settings().allowedMaces()) {
+        if (plugin.settings().hasMaceLimit() && plugin.registry().count() >= plugin.settings().allowedMaces()) {
             for (SavedRecipe recipe : saved) {
                 Bukkit.removeRecipe(recipe.key());
             }

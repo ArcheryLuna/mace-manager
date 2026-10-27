@@ -55,6 +55,9 @@ public final class TrackingListener implements Listener {
     }
 
     public void queueChunk(org.bukkit.Chunk chunk) {
+        if (!plugin.settings().hasMaceLimit()) {
+            return;
+        }
         String key = chunk.getWorld().getUID() + ":" + chunk.getX() + ":" + chunk.getZ();
         if (!queuedChunks.add(key)) {
             return;
@@ -149,6 +152,10 @@ public final class TrackingListener implements Listener {
     }
 
     public void reconcileAll() {
+        if (!plugin.settings().hasMaceLimit()) {
+            auditRequested = false;
+            return;
+        }
         long start = System.nanoTime();
         auditRequested = false;
         groundItems.clear();
@@ -209,11 +216,13 @@ public final class TrackingListener implements Listener {
             return;
         }
         if (!(event.getEntity() instanceof Player player)) {
-            event.setCancelled(true);
+            if (plugin.settings().hasMaceLimit()) {
+                event.setCancelled(true);
+            }
             return;
         }
         UUID id = classification.id();
-        if (!classification.untracked() && (id == null || !plugin.registry().contains(id))) {
+        if (plugin.settings().hasMaceLimit() && !classification.untracked() && (id == null || !plugin.registry().contains(id))) {
             event.setCancelled(true);
             event.getItem().remove();
             Notices.send(player, plugin.settings().format("illegal-removed"));
@@ -235,7 +244,7 @@ public final class TrackingListener implements Listener {
             plugin.registry().markDropped(id, item.getLocation());
             return;
         }
-        if (classification.mace() && !classification.untracked()) {
+        if (plugin.settings().hasMaceLimit() && classification.mace() && !classification.untracked()) {
             item.remove();
             Notices.send(event.getPlayer(), plugin.settings().format("illegal-removed"));
         }
@@ -252,7 +261,7 @@ public final class TrackingListener implements Listener {
             plugin.registry().markDropped(id, item.getLocation());
             return;
         }
-        if (classification.mace() && !classification.untracked()) {
+        if (plugin.settings().hasMaceLimit() && classification.mace() && !classification.untracked()) {
             plugin.getServer().getScheduler().runTask(plugin, () -> {
                 if (item.isValid()) {
                     item.remove();
@@ -292,7 +301,8 @@ public final class TrackingListener implements Listener {
         } else {
             groundItems.remove(item.getUniqueId());
         }
-        boolean illegal = classification.mace()
+        boolean illegal = plugin.settings().hasMaceLimit()
+                && classification.mace()
                 && !classification.untracked()
                 && (id == null || !plugin.registry().contains(id) || !seen.add(id));
         if (illegal) {

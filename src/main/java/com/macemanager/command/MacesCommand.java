@@ -73,7 +73,7 @@ public final class MacesCommand implements CommandExecutor, TabCompleter {
         }
         Notices.send(sender, plugin.settings().format("list-header", Map.of(
                 "current", Integer.toString(plugin.registry().count()),
-                "max", Integer.toString(plugin.settings().allowedMaces())
+                "max", plugin.settings().maceLimitLabel()
         )));
         List<MaceRecord> records = new ArrayList<>(plugin.registry().all());
         records.sort(Comparator.comparing(MaceRecord::holderName, String.CASE_INSENSITIVE_ORDER));
@@ -126,14 +126,14 @@ public final class MacesCommand implements CommandExecutor, TabCompleter {
             Notices.send(sender, plugin.settings().format("no-permission"));
             return true;
         }
-        Integer amount = parseNonNegative(args);
+        Integer amount = parseLimit(args);
         if (amount == null) {
-            Notices.send(sender, plugin.settings().format("usage", Map.of("usage", "/maces setlimit <amount>")));
+            Notices.send(sender, plugin.settings().format("usage", Map.of("usage", "/maces setlimit <-1|amount>")));
             return true;
         }
         plugin.settings().setAllowedMaces(amount);
         plugin.recipes().sync();
-        Notices.send(sender, plugin.settings().format("setlimit", Map.of("limit", Integer.toString(amount))));
+        Notices.send(sender, plugin.settings().format("setlimit", Map.of("limit", plugin.settings().maceLimitLabel())));
         return true;
     }
 
@@ -238,6 +238,18 @@ public final class MacesCommand implements CommandExecutor, TabCompleter {
             }
         }
         return plugin.maceItems().isMace(player.getItemOnCursor());
+    }
+
+    private Integer parseLimit(String[] args) {
+        if (args.length < 2) {
+            return null;
+        }
+        try {
+            int value = Integer.parseInt(args[1]);
+            return value < -1 ? null : value;
+        } catch (NumberFormatException exception) {
+            return null;
+        }
     }
 
     private Integer parseNonNegative(String[] args) {

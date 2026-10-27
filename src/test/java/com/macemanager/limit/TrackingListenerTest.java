@@ -28,6 +28,9 @@ class TrackingListenerTest {
 
     @BeforeEach
     void setUp() {
+        PluginConfig settings = mock(PluginConfig.class);
+        when(settings.hasMaceLimit()).thenReturn(true);
+        when(plugin.settings()).thenReturn(settings);
         when(plugin.registry()).thenReturn(registry);
         when(plugin.maceItems()).thenReturn(items);
         when(player.getUniqueId()).thenReturn(UUID.randomUUID());
@@ -50,6 +53,7 @@ class TrackingListenerTest {
     void unknownIdCannotBePickedUpOrRegisteredAsLegitimate() {
         PluginConfig settings = mock(PluginConfig.class);
         when(plugin.settings()).thenReturn(settings);
+        when(settings.hasMaceLimit()).thenReturn(true);
         when(settings.format("illegal-removed")).thenReturn("Illegal mace removed");
         EntityPickupItemEvent event = new EntityPickupItemEvent(player, item, 0);
         listener.onPickup(event);

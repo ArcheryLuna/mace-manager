@@ -6,16 +6,12 @@ limit, and applies cooldowns based on mace and armor enchantments.
 
 ## Features
 
-- **Server-wide mace limit:** allow up to three tracked maces by default. Offline
-  owners still count toward the limit.
+- **Server-wide mace limit:** unlimited by default, matching vanilla. Set `allowed-maces` to a positive number to cap tracked maces. Offline owners still count toward a cap.
 - **Ownership tracking:** keep track of holders and dropped maces across restarts.
 - **Duplicate enforcement:** audit loaded player inventories and ground items,
   removing illegal maces and duplicate tracked identities.
-- **Storage restrictions:** block maces from containers, bundles of every color,
-  item frames, armor stands, and decorated pots. Automated crafters cannot create
-  maces.
-- **Configurable combat cooldowns:** adjust the base duration and add or subtract
-  seconds for enchantments on the mace and each worn armor piece.
+- **Storage restrictions:** while a mace limit is set, block maces from containers, bundles of every color, item frames, armor stands, and decorated pots. Automated crafters cannot create maces.
+- **Configurable combat cooldowns:** off by default, matching vanilla. Turn `cooldown.enabled` on and set `base-seconds` to add a delay, then add or subtract seconds for enchantments on the mace and each worn armor piece.
 - **Optional wind-charge cooldown:** configure a separate delay between launches.
 - **Enchanting controls:** toggle mace access to anvils and enchanting tables.
 - **Administration:** list holders, change limits, remove tracked maces, and issue
@@ -56,13 +52,13 @@ The complete defaults, comments, and message keys are in
 with their default values:
 
 ```yaml
-allowed-maces: 3
+allowed-maces: -1
 allow-mace-enchanting: true
 
 cooldown:
-  enabled: true
+  enabled: false
   ignore-thorns: true
-  base-seconds: 120
+  base-seconds: 0
   minimum-seconds: 0
   maximum-seconds: 600
   mace-enchantments:
@@ -84,15 +80,9 @@ wind-charge:
 
 ### Limits and storage
 
-`allowed-maces` controls the number of registered maces across the server, including
-offline owners. Setting it to `0` blocks new tracked crafts. Lowering it does not
-delete existing registered maces. Once the limit is reached, further crafting is
-blocked until a tracked mace is destroyed or removed, or the limit is raised.
+`allowed-maces` controls registered maces across the server, including offline owners. `-1`, the default, matches vanilla: crafting, containers, and existing maces are left alone. `0` blocks new tracked crafts. A positive number caps tracked maces and removes maces that have no id. Lowering a positive limit does not delete existing registered maces. Once that cap is reached, further crafting is blocked until a tracked mace is destroyed or removed, or the limit is raised.
 
-Players can carry maces and use grindstones. Anvils and enchanting tables are
-available when `allow-mace-enchanting` is `true`. Other inventory types are blocked
-for mace storage. Cleanup extracts nested maces from player-held bundles and
-shulker boxes and releases maces found in loaded containers.
+Container bans, hopper pickup blocks, and crafter blocking apply only while a limit is set. Players can carry maces and use grindstones. Anvils and enchanting tables are available when `allow-mace-enchanting` is `true`.
 
 Administrator-issued untracked maces bypass the count and tracked-ID enforcement;
 they still follow storage restrictions and cooldown rules.
@@ -107,8 +97,7 @@ base seconds
 + sum of (enchantment level × configured seconds per level) on each armor piece
 ```
 
-For example, a base of `120`, a `density` rate of `5`, and Density III produce a
-135-second cooldown before armor modifiers are applied.
+For example, with the cooldown enabled, a base of `120`, a `density` rate of `5`, and Density III produce a 135-second cooldown before armor modifiers are applied. The default base is `0` and the cooldown is disabled, which leaves the vanilla attack-speed bar unchanged.
 
 - Positive rates increase the duration; negative rates reduce it.
 - A rate of `0` ignores that enchantment.

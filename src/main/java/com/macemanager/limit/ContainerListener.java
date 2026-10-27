@@ -34,7 +34,7 @@ public final class ContainerListener implements Listener {
 
     @EventHandler(ignoreCancelled = true)
     public void onClick(InventoryClickEvent event) {
-        if (!(event.getWhoClicked() instanceof Player player)) {
+        if (!enforcing() || !(event.getWhoClicked() instanceof Player player)) {
             return;
         }
         if (pairsMaceWithBundle(event.getCursor(), event.getCurrentItem())) {
@@ -49,6 +49,9 @@ public final class ContainerListener implements Listener {
 
     @EventHandler(ignoreCancelled = true)
     public void onDrag(InventoryDragEvent event) {
+        if (!enforcing()) {
+            return;
+        }
         ItemStack dragged = event.getOldCursor();
         if (!plugin.maceItems().isMace(dragged)) {
             return;
@@ -66,21 +69,21 @@ public final class ContainerListener implements Listener {
 
     @EventHandler(ignoreCancelled = true)
     public void onHopperMove(InventoryMoveItemEvent event) {
-        if (plugin.maceItems().isMace(event.getItem())) {
+        if (enforcing() && plugin.maceItems().isMace(event.getItem())) {
             event.setCancelled(true);
         }
     }
 
     @EventHandler(ignoreCancelled = true)
     public void onHopperPickup(InventoryPickupItemEvent event) {
-        if (plugin.maceItems().isMace(event.getItem().getItemStack())) {
+        if (enforcing() && plugin.maceItems().isMace(event.getItem().getItemStack())) {
             event.setCancelled(true);
         }
     }
 
     @EventHandler(ignoreCancelled = true)
     public void onDispense(BlockDispenseEvent event) {
-        if (plugin.maceItems().isMace(event.getItem())) {
+        if (enforcing() && plugin.maceItems().isMace(event.getItem())) {
             event.setCancelled(true);
         }
     }
@@ -88,7 +91,7 @@ public final class ContainerListener implements Listener {
     @EventHandler(ignoreCancelled = true)
     public void onFrame(PlayerInteractEntityEvent event) {
         ItemStack hand = event.getPlayer().getInventory().getItem(event.getHand());
-        if (!plugin.maceItems().isMace(hand)) {
+        if (!enforcing() || !plugin.maceItems().isMace(hand)) {
             return;
         }
         if (event.getRightClicked() instanceof ItemFrame || event.getRightClicked() instanceof ArmorStand) {
@@ -99,7 +102,7 @@ public final class ContainerListener implements Listener {
 
     @EventHandler(ignoreCancelled = true)
     public void onArmorStand(PlayerArmorStandManipulateEvent event) {
-        if (!plugin.maceItems().isMace(event.getPlayerItem())) {
+        if (!enforcing() || !plugin.maceItems().isMace(event.getPlayerItem())) {
             return;
         }
         event.setCancelled(true);
@@ -108,7 +111,7 @@ public final class ContainerListener implements Listener {
 
     @EventHandler(ignoreCancelled = true)
     public void onPot(PlayerInteractEvent event) {
-        if (event.getClickedBlock() == null || event.getClickedBlock().getType() != Material.DECORATED_POT) {
+        if (!enforcing() || event.getClickedBlock() == null || event.getClickedBlock().getType() != Material.DECORATED_POT) {
             return;
         }
         if (event.getAction() != Action.RIGHT_CLICK_BLOCK || !plugin.maceItems().isMace(event.getItem())) {
@@ -120,11 +123,17 @@ public final class ContainerListener implements Listener {
 
     @EventHandler
     public void onChunkLoad(ChunkLoadEvent event) {
-        strip(event.getChunk());
+        if (enforcing()) {
+            strip(event.getChunk());
+        }
     }
 
     public void strip(Chunk chunk) {
         plugin.tracking().queueChunk(chunk);
+    }
+
+    private boolean enforcing() {
+        return plugin.settings().hasMaceLimit();
     }
 
     private void deny(InventoryClickEvent event, Player player) {

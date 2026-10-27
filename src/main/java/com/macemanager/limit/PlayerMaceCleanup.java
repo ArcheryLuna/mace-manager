@@ -36,6 +36,9 @@ public final class PlayerMaceCleanup {
     }
 
     public void clean(Player player, Set<UUID> seen) {
+        if (!plugin.settings().hasMaceLimit()) {
+            return;
+        }
         illegalRemoved = 0;
         PlayerInventory inventory = player.getInventory();
         List<ItemStack> extracted = new ArrayList<>();
@@ -56,7 +59,7 @@ public final class PlayerMaceCleanup {
     }
 
     public void queueChunk(org.bukkit.Chunk chunk, ScanQueue.Job job) {
-        if (!chunk.isLoaded()) {
+        if (!plugin.settings().hasMaceLimit() || !chunk.isLoaded()) {
             return;
         }
         for (org.bukkit.block.BlockState state : plugin.chunkAccess().tiles(chunk)) {

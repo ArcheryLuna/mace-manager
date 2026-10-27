@@ -1,22 +1,26 @@
-# Maximum number of tracked maces on the server.
-# Offline players still count. Lowering this does not delete existing maces.
-allowed-maces: 3
+# Maximum tracked maces.
+# -1 matches vanilla: no cap, chests and crafters work, and existing maces are left alone.
+# 0 allows none. A positive number caps tracked maces and removes maces without an id.
+# Offline holders still count. Lowering a positive limit does not delete tracked maces.
+allowed-maces: -1
 
 # When false, maces cannot be placed in an enchanting table or an anvil.
 allow-mace-enchanting: true
 
 broadcasts:
-  # Set false to hide announcements when a player crafts a mace.
+  # Set true to announce when a player crafts a tracked mace.
   # Edit messages.crafted-broadcast below to customize the announcement.
-  crafted: true
+  crafted: false
 
 cooldown:
-  enabled: true
+  # Vanilla has no extra mace cooldown beyond the attack-speed bar. Set true to add one.
+  enabled: false
   # Thorns armor still deals its reflected damage.
   # That hit does not start or refresh the mace cooldown, and a cooldown does not cancel it.
   ignore-thorns: true
-  # Seconds added after a real main-hand mace swing. Enchantment modifiers are added on top.
-  base-seconds: 120
+  # Extra seconds after a real main-hand mace swing. 0 matches vanilla.
+  # Enchantment modifiers below are added on top once the cooldown is enabled.
+  base-seconds: 0
   minimum-seconds: 0
   maximum-seconds: 600
   # Seconds added or removed per level on the mace. Negative numbers shorten the cooldown.

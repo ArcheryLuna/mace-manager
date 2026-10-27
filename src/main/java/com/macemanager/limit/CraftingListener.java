@@ -24,6 +24,9 @@ public final class CraftingListener implements Listener {
 
     @EventHandler(ignoreCancelled = true, priority = EventPriority.HIGH)
     public void onPrepare(PrepareItemCraftEvent event) {
+        if (!plugin.settings().hasMaceLimit()) {
+            return;
+        }
         ItemStack result = event.getInventory().getResult();
         if (result == null || result.getType() != Material.MACE) {
             return;
@@ -36,7 +39,7 @@ public final class CraftingListener implements Listener {
     @EventHandler(ignoreCancelled = true, priority = EventPriority.HIGHEST)
     public void onCraft(CraftItemEvent event) {
         ItemStack result = event.getRecipe().getResult();
-        if (result.getType() != Material.MACE || !(event.getWhoClicked() instanceof Player player)) {
+        if (!plugin.settings().hasMaceLimit() || result.getType() != Material.MACE || !(event.getWhoClicked() instanceof Player player)) {
             return;
         }
         if (!(event.getInventory() instanceof CraftingInventory crafting)) {
@@ -83,7 +86,7 @@ public final class CraftingListener implements Listener {
     @EventHandler(ignoreCancelled = true)
     public void onCrafter(CrafterCraftEvent event) {
         ItemStack result = event.getResult();
-        if (result != null && result.getType() == Material.MACE) {
+        if (plugin.settings().hasMaceLimit() && result != null && result.getType() == Material.MACE) {
             // A crafter would put the mace straight into a container.
             event.setCancelled(true);
         }
