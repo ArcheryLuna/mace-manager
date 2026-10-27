@@ -76,7 +76,7 @@ public final class MaceCooldownListener implements Listener {
      * refresh, or get cancelled by the mace cooldown.
      */
     private Player attacker(EntityDamageByEntityEvent event) {
-        if (event.getCause() == EntityDamageEvent.DamageCause.THORNS) {
+        if (plugin.settings().ignoreThorns() && event.getCause() == EntityDamageEvent.DamageCause.THORNS) {
             return null;
         }
         if (event.getCause() != EntityDamageEvent.DamageCause.ENTITY_ATTACK) {

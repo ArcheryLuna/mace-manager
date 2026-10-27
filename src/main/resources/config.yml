@@ -5,10 +5,17 @@ allowed-maces: 3
 # When false, maces cannot be placed in an enchanting table or an anvil.
 allow-mace-enchanting: true
 
+broadcasts:
+  # Set false to hide announcements when a player crafts a mace.
+  # Edit messages.crafted-broadcast below to customize the announcement.
+  crafted: true
+
 cooldown:
   enabled: true
+  # Thorns armor still deals its reflected damage.
+  # That hit does not start or refresh the mace cooldown, and a cooldown does not cancel it.
+  ignore-thorns: true
   # Seconds added after a real main-hand mace swing. Enchantment modifiers are added on top.
-  # Thorns never starts this cooldown, and a cooldown never cancels Thorns damage.
   base-seconds: 120
   minimum-seconds: 0
   maximum-seconds: 600
@@ -26,6 +33,9 @@ cooldown:
     projectile_protection: 0
     fire_protection: 0
     feather_falling: 0
+    # Extra seconds per Thorns level when swinging a mace. This does not change Thorns damage.
+    # Leave at 0 so wearing Thorns does not lengthen the swing cooldown.
+    thorns: 0
 
 # Optional wind-charge cooldown. It does not use the enchantment modifiers.
 wind-charge:
@@ -47,6 +57,8 @@ performance:
 
 messages:
   prefix: "&6[MaceManager]&r "
+  # Crafting announcement. Supports & colors and %player%, %current%, %max%, %amount%, %lastHolder%.
+  # Remove %player% from this message to announce crafting without naming the player.
   crafted-broadcast: "&a%player% &7crafted a mace. &7(%current%/%max%)"
   destroyed-broadcast: "&cA mace was destroyed. &7(last held by &f%lastHolder%&7) &7(%current%/%max%)"
   containers-blocked: "&cYou can't put the mace in any container."

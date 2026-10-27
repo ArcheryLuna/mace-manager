@@ -16,7 +16,9 @@ public final class PluginConfig {
     private final JavaPlugin plugin;
     private int allowedMaces = 3;
     private boolean allowMaceEnchanting = true;
+    private boolean broadcastCrafted = true;
     private boolean cooldownEnabled = true;
+    private boolean ignoreThorns = true;
     private int baseSeconds = 120;
     private int minimumSeconds;
     private int maximumSeconds = 600;
@@ -43,7 +45,9 @@ public final class PluginConfig {
         FileConfiguration config = plugin.getConfig();
         allowedMaces = Math.max(0, config.getInt("allowed-maces", 3));
         allowMaceEnchanting = config.getBoolean("allow-mace-enchanting", true);
+        broadcastCrafted = config.getBoolean("broadcasts.crafted", true);
         cooldownEnabled = config.getBoolean("cooldown.enabled", true);
+        ignoreThorns = config.getBoolean("cooldown.ignore-thorns", true);
         baseSeconds = Math.max(0, config.getInt("cooldown.base-seconds", 120));
         minimumSeconds = Math.max(0, config.getInt("cooldown.minimum-seconds", 0));
         maximumSeconds = config.getInt("cooldown.maximum-seconds", 600);
@@ -119,8 +123,16 @@ public final class PluginConfig {
         return allowMaceEnchanting;
     }
 
+    public boolean broadcastCrafted() {
+        return broadcastCrafted;
+    }
+
     public boolean cooldownEnabled() {
         return cooldownEnabled;
+    }
+
+    public boolean ignoreThorns() {
+        return ignoreThorns;
     }
 
     public int baseSeconds() {

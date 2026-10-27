@@ -29,7 +29,7 @@ limit, and applies cooldowns based on mace and armor enchantments.
   targets Paper 1.21.4 and aims to preserve Bukkit/Spigot compatibility.
 - LuckPerms is optional; see [Permissions](#permissions) for its effect.
 
-The code compiles and all 40 regression tests pass against both the Paper 1.21.4
+The code compiles and the regression suite passes against both the Paper 1.21.4
 and 1.21.11 APIs. Listener tests use mocked server objects. Live Minecraft server
 behavior, actual inventory transactions, and compatibility with other plugins have
 not been verified by those checks. Bukkit/Spigot compatibility also requires
@@ -61,6 +61,7 @@ allow-mace-enchanting: true
 
 cooldown:
   enabled: true
+  ignore-thorns: true
   base-seconds: 120
   minimum-seconds: 0
   maximum-seconds: 600
@@ -74,6 +75,7 @@ cooldown:
     projectile_protection: 0
     fire_protection: 0
     feather_falling: 0
+    thorns: 0
 
 wind-charge:
   enabled: false
@@ -112,7 +114,7 @@ For example, a base of `120`, a `density` rate of `5`, and Density III produce a
 - A rate of `0` ignores that enchantment.
 - A total of zero or less starts no cooldown, even if the configured minimum is
   positive. Positive totals are clamped to the configured minimum and maximum.
-- Thorns damage neither starts nor refreshes the cooldown and is not blocked by it.
+- With `ignore-thorns: true` (the default), Thorns still deals its reflected damage. That reflection does not start or refresh the mace cooldown, and an active cooldown does not cancel it. `armor-enchantments.thorns` only changes the swing timer; leave it at `0` so wearing Thorns does not add time.
 - Other weapons remain usable during a mace cooldown.
 - Cooldowns survive reconnecting while the plugin remains running. They are held
   in memory and do not persist across server restarts.
@@ -121,6 +123,20 @@ Wind charges use their own fixed duration and do not use enchantment modifiers.
 The mace cooldown bypass permission does not bypass the wind-charge cooldown.
 
 ### Messages and performance
+
+Set `broadcasts.crafted` to `false` to turn off server-wide crafting announcements.
+It defaults to `true`, including for existing configurations without this setting.
+Edit `messages.crafted-broadcast` to change the announcement text or remove
+`%player%` to omit the crafter's name. For example, add or update these keys in your
+existing configuration, then run `/maces reload`:
+
+```yaml
+broadcasts:
+  crafted: false
+
+messages:
+  crafted-broadcast: "&6A mace has been crafted! &7(%current%/%max%)"
+```
 
 Edit the `messages` section to customize feedback. Messages support `&` color
 codes and the placeholders shown in the defaults, such as `%player%`, `%seconds%`,

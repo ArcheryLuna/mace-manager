@@ -37,6 +37,7 @@ class MaceCooldownListenerTest {
         when(plugin.cooldowns()).thenReturn(cooldowns);
         when(plugin.permissions()).thenReturn(permissions);
         when(settings.cooldownEnabled()).thenReturn(true);
+        when(settings.ignoreThorns()).thenReturn(true);
         when(settings.baseSeconds()).thenReturn(120);
         when(settings.maximumSeconds()).thenReturn(600);
         when(settings.activeMaceEnchantments()).thenReturn(Map.of());
