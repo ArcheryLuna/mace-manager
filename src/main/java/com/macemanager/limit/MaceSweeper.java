@@ -4,7 +4,7 @@ import com.macemanager.MaceManagerPlugin;
 import org.bukkit.Chunk;
 import org.bukkit.Material;
 import org.bukkit.World;
-import org.bukkit.block.Container;
+import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.Item;
 import org.bukkit.entity.ItemFrame;
@@ -78,11 +78,11 @@ public final class MaceSweeper {
             return;
         }
         for (org.bukkit.block.BlockState state : plugin.chunkAccess().tiles(chunk)) {
-            if (state instanceof Container) {
+            if (state instanceof InventoryHolder) {
                 org.bukkit.block.Block block = state.getBlock();
                 job.add(() -> {
-                    if (chunk.isLoaded() && plugin.chunkAccess().state(block) instanceof Container container) {
-                        removed[0] += clearInventory(container.getInventory(), match);
+                    if (chunk.isLoaded() && plugin.chunkAccess().state(block) instanceof InventoryHolder container) {
+                        removed[0] += clearInventory(StorageRules.inventory(container), match);
                     }
                 });
             }
@@ -110,16 +110,33 @@ public final class MaceSweeper {
                     removed += nested;
                 }
             }
-        } else if (entity instanceof ItemFrame frame && match.test(frame.getItem())) {
-            frame.setItem(new ItemStack(Material.AIR));
-            removed++;
-        } else if (entity instanceof ArmorStand stand) {
-            for (EquipmentSlot slot : ARMOR_STAND_SLOTS) {
-                if (match.test(stand.getItem(slot))) {
-                    stand.setItem(slot, null);
-                    removed++;
+        } else if (entity instanceof ItemFrame frame) {
+            ItemStack displayed = frame.getItem();
+            if (match.test(displayed)) {
+                frame.setItem(new ItemStack(Material.AIR));
+                removed++;
+            } else {
+                removed += clearNested(displayed, match);
+                if (removed > 0) {
+                    frame.setItem(displayed);
                 }
             }
+        } else if (entity instanceof ArmorStand stand) {
+            for (EquipmentSlot slot : ARMOR_STAND_SLOTS) {
+                ItemStack equipped = stand.getItem(slot);
+                if (match.test(equipped)) {
+                    stand.setItem(slot, null);
+                    removed++;
+                } else {
+                    int nested = clearNested(equipped, match);
+                    removed += nested;
+                    if (nested > 0) {
+                        stand.setItem(slot, equipped);
+                    }
+                }
+            }
+        } else if (entity instanceof InventoryHolder holder && !(entity instanceof Player)) {
+            removed += clearInventory(StorageRules.inventory(holder), match);
         }
         return removed;
     }
@@ -149,9 +166,23 @@ public final class MaceSweeper {
     }
 
     private int clearNested(ItemStack stack, Predicate<ItemStack> match) {
-        if (Bundles.isBundle(stack)) {
-            return Bundles.extractMaces(stack, match).size();
+        java.util.List<ItemStack> contents = NestedMaces.contents(stack);
+        int removed = 0;
+        for (int index = 0; index < contents.size(); index++) {
+            ItemStack child = contents.get(index);
+            if (child == null) {
+                continue;
+            }
+            if (match.test(child)) {
+                contents.set(index, null);
+                removed++;
+            } else {
+                removed += clearNested(child, match);
+            }
         }
-        return ShulkerMaces.extractMaces(stack, match).size();
+        if (removed > 0) {
+            NestedMaces.contents(stack, contents);
+        }
+        return removed;
     }
 }

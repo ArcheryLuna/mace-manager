@@ -111,7 +111,7 @@ public final class MaceManagerPlugin extends JavaPlugin {
         if (settings != null && settings.logTimings() && tracking != null) {
             getLogger().info("Maximum plugin timings (ms): scan tick=" + scans.maximumTickNanos() / 1_000_000.0
                     + ", scan unit=" + scans.maximumUnitNanos() / 1_000_000.0
-                    + ", full audit=" + tracking.maximumAuditNanos() / 1_000_000.0
+                    + ", full audit elapsed=" + tracking.maximumAuditNanos() / 1_000_000.0
                     + ", dirty pass=" + tracking.maximumDirtyNanos() / 1_000_000.0
                     + ", cooldown calculation=" + maceCooldownListener.maximumCalculationNanos() / 1_000_000.0
                     + ", registry write=" + registry.maximumWriteNanos() / 1_000_000.0);
@@ -127,6 +127,10 @@ public final class MaceManagerPlugin extends JavaPlugin {
         settings.warnUnknownEnchantments();
         chunkAccess = new ChunkAccess(settings.directChunkStates());
         recipes.refresh();
+        tracking.reconcileLoadedWorlds();
+        for (var player : getServer().getOnlinePlayers()) {
+            tracking.markDirty(player);
+        }
     }
 
     public void destroyMace(UUID id) {

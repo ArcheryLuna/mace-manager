@@ -33,19 +33,21 @@ class TrackingListenerTest {
         when(plugin.settings()).thenReturn(settings);
         when(plugin.registry()).thenReturn(registry);
         when(plugin.maceItems()).thenReturn(items);
+        when(plugin.scans()).thenReturn(new ScanQueue());
         when(player.getUniqueId()).thenReturn(UUID.randomUUID());
         ItemStack stack = mock(ItemStack.class);
+        when(stack.getType()).thenReturn(org.bukkit.Material.MACE);
         when(item.getItemStack()).thenReturn(stack);
         when(items.classify(stack)).thenReturn(new MaceItems.Classification(true, false, id));
     }
 
     @Test
-    void registeredPickupTransfersOwnershipWithoutRemovingItem() {
+    void registeredPickupWaitsForActualPossessionWithoutRemovingItem() {
         when(registry.contains(id)).thenReturn(true);
         EntityPickupItemEvent event = new EntityPickupItemEvent(player, item, 0);
         listener.onPickup(event);
         assertFalse(event.isCancelled());
-        verify(registry).hold(id, player);
+        verify(registry, never()).hold(any(), any());
         verify(item, never()).remove();
     }
 
@@ -81,6 +83,7 @@ class TrackingListenerTest {
         MaceRecord record = new MaceRecord(id, player.getUniqueId(), "Offline");
         when(registry.all()).thenReturn(List.of(record));
         listener.reconcileAll();
+        plugin.scans().tick(1000, Long.MAX_VALUE);
         verify(plugin, never()).destroyMace(any());
         verify(registry, never()).remove(any());
     }

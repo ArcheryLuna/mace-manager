@@ -32,6 +32,9 @@ public final class TrackingListener implements Listener {
     private long maximumAuditNanos;
     private long maximumDirtyNanos;
     private boolean auditRequested = true;
+    private boolean auditRunning;
+    private long eventRevision;
+    private final Map<UUID, Long> touched = new HashMap<>();
 
     public TrackingListener(MaceManagerPlugin plugin) {
         this.plugin = plugin;
@@ -51,23 +54,22 @@ public final class TrackingListener implements Listener {
     }
 
     public boolean readyForAudit() {
-        return queuedChunks.isEmpty();
+        return queuedChunks.isEmpty() && !auditRunning;
     }
 
     public void queueChunk(org.bukkit.Chunk chunk) {
-        if (!plugin.settings().hasMaceLimit()) {
-            return;
-        }
         String key = chunk.getWorld().getUID() + ":" + chunk.getX() + ":" + chunk.getZ();
         if (!queuedChunks.add(key)) {
             return;
         }
+        touchChunk(chunk);
         auditRequested = true;
         ScanQueue.Job job = plugin.scans().submit(() -> {
             queuedChunks.remove(key);
             auditRequested = true;
         });
-        job.add(() -> cleanup.queueChunk(chunk, job));
+        MaceObservations seen = new MaceObservations();
+        job.add(() -> cleanup.queueChunk(chunk, job, seen));
     }
 
     public void markDirty(Player player) {
@@ -76,7 +78,7 @@ public final class TrackingListener implements Listener {
 
     public void reconcileDirty() {
         long start = System.nanoTime();
-        Set<UUID> seen = new HashSet<>();
+        MaceObservations seen = new MaceObservations();
         Set<UUID> pending = new HashSet<>(dirtyPlayers);
         dirtyPlayers.clear();
         for (UUID id : pending) {
@@ -99,11 +101,23 @@ public final class TrackingListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void inventoryClick(org.bukkit.event.inventory.InventoryClickEvent event) {
+        touch(event.getCursor());
+        touch(event.getCurrentItem());
+        if (event.getWhoClicked() instanceof Player player) {
+            int hotbar = event.getHotbarButton();
+            if (hotbar >= 0) {
+                touch(player.getInventory().getItem(hotbar));
+            }
+            if (event.getClick() == org.bukkit.event.inventory.ClickType.SWAP_OFFHAND) {
+                touch(player.getInventory().getItemInOffHand());
+            }
+        }
         dirtyViewers(event.getView());
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void inventoryDrag(org.bukkit.event.inventory.InventoryDragEvent event) {
+        touch(event.getOldCursor());
         dirtyViewers(event.getView());
     }
 
@@ -119,6 +133,9 @@ public final class TrackingListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void playerDeath(org.bukkit.event.entity.PlayerDeathEvent event) {
+        for (ItemStack stack : event.getDrops()) {
+            touch(stack);
+        }
         markDirty(event.getEntity());
     }
 
@@ -129,10 +146,13 @@ public final class TrackingListener implements Listener {
 
     @EventHandler
     public void playerQuit(org.bukkit.event.player.PlayerQuitEvent event) {
+        touchPlayer(event.getPlayer());
+        cleanup.clean(event.getPlayer(), new MaceObservations());
         dirtyPlayers.remove(event.getPlayer().getUniqueId());
     }
 
     private void dirtyViewers(org.bukkit.inventory.InventoryView view) {
+        queueInventory(view.getTopInventory());
         if (view.getPlayer() instanceof Player player) {
             markDirty(player);
         }
@@ -151,44 +171,173 @@ public final class TrackingListener implements Listener {
         return maximumDirtyNanos;
     }
 
+    /** Full storage audits are cooperative server-thread jobs, not whole-world tick scans. */
     public void reconcileAll() {
-        if (!plugin.settings().hasMaceLimit()) {
-            auditRequested = false;
+        if (auditRunning) {
             return;
         }
-        long start = System.nanoTime();
+        auditRunning = true;
         auditRequested = false;
-        groundItems.clear();
-        dirtyPlayers.clear();
-        Set<UUID> seen = new HashSet<>();
-        for (Player player : plugin.getServer().getOnlinePlayers()) {
-            cleanup.clean(player, seen);
-        }
-        MaceItems items = plugin.maceItems();
-        for (World world : plugin.getServer().getWorlds()) {
-            for (Item item : world.getEntitiesByClass(Item.class)) {
-                reconcileGroundItem(item, items, seen);
-            }
-        }
-        for (MaceRecord record : plugin.registry().all()) {
-            // A queued container may still contain this record's physical item.
-            // Duplicate checks above always run; missing-item decisions wait for cleanup.
-            if (!queuedChunks.isEmpty() || seen.contains(record.id())) {
-                continue;
-            }
-            if (record.dropped()) {
-                World world = plugin.getServer().getWorld(record.dropWorld());
-                if (world == null || !world.isChunkLoaded(record.dropChunkX(), record.dropChunkZ())) {
-                    continue;
+        long revision = eventRevision;
+        long start = System.nanoTime();
+        touched.keySet().removeIf(id -> !plugin.registry().contains(id));
+        MaceObservations seen = new MaceObservations();
+        ScanQueue.Job job = plugin.scans().submit(() -> {
+            try {
+                if (queuedChunks.isEmpty() && plugin.settings().hasMaceLimit()) {
+                    var missing = plugin.registry().all().stream()
+                            .filter(record -> touched.getOrDefault(record.id(), 0L) <= revision
+                                    && !seen.contains(record.id()) && locationLoaded(record.location(), record.holder()))
+                            .toList();
+                    if (!missing.isEmpty()) {
+                        confirmMissing(missing, revision);
+                    }
                 }
-                plugin.destroyMace(record.id());
-                continue;
+            } catch (RuntimeException exception) {
+                auditRequested = true;
+                plugin.getLogger().warning("Mace audit verification failed; missing-item decisions deferred: " + exception);
+            } finally {
+                auditRunning = false;
+                maximumAuditNanos = Math.max(maximumAuditNanos, System.nanoTime() - start);
             }
-            if (record.holder() != null && plugin.getServer().getPlayer(record.holder()) != null) {
+        }, exception -> {
+            auditRunning = false;
+            auditRequested = true;
+            plugin.getLogger().warning("Full mace audit incomplete; missing-item decisions deferred: " + exception);
+        });
+        for (Player player : plugin.getServer().getOnlinePlayers()) {
+            job.add(() -> {
+                if (player.isOnline()) {
+                    cleanup.clean(player, seen);
+                }
+            });
+        }
+        for (World world : plugin.getServer().getWorlds()) {
+            for (org.bukkit.Chunk chunk : world.getLoadedChunks()) {
+                job.add(() -> cleanup.queueChunk(chunk, job, seen));
+            }
+            job.add(() -> {
+                for (Item item : world.getEntitiesByClass(Item.class)) {
+                    job.add(() -> {
+                        if (item.isValid() && !item.isDead()) {
+                            reconcileGroundItem(item, plugin.maceItems(), seen);
+                        }
+                    });
+                }
+            });
+        }
+    }
+
+    private void confirmMissing(java.util.List<MaceRecord> candidates, long revision) {
+        // Plugins/commands can move items without events. Only the rare missing-record path
+        // needs a final same-tick pass; a multi-tick negative result alone is not proof of loss.
+        // This verification may exceed the cooperative scan budget.
+        MaceObservations confirmed = new MaceObservations();
+        for (Player player : plugin.getServer().getOnlinePlayers()) {
+            cleanup.clean(player, confirmed);
+        }
+        for (World world : plugin.getServer().getWorlds()) {
+            for (org.bukkit.Chunk chunk : world.getLoadedChunks()) {
+                cleanup.scanChunkNow(chunk, confirmed);
+            }
+            for (Item item : world.getEntitiesByClass(Item.class)) {
+                if (item.isValid() && !item.isDead()) {
+                    reconcileGroundItem(item, plugin.maceItems(), confirmed);
+                }
+            }
+        }
+        for (MaceRecord record : candidates) {
+            if (touched.getOrDefault(record.id(), 0L) <= revision && !confirmed.contains(record.id())
+                    && locationLoaded(record.location(), record.holder())) {
                 plugin.destroyMace(record.id());
             }
         }
-        maximumAuditNanos = Math.max(maximumAuditNanos, System.nanoTime() - start);
+    }
+
+    private boolean locationLoaded(MaceLocation location, UUID holder) {
+        if (location.state() == MaceLocation.State.CARRIED) {
+            return holder != null && plugin.getServer().getPlayer(holder) != null;
+        }
+        if (location.inventoryOwner() != null) {
+            // Plugin menus without a physical location cannot be inspected after they close.
+            return !location.storageType().startsWith("OPEN_")
+                    && plugin.getServer().getPlayer(location.inventoryOwner()) != null;
+        }
+        World world = plugin.getServer().getWorld(location.world());
+        return world != null && world.isChunkLoaded(location.chunkX(), location.chunkZ());
+    }
+
+    public void touch(ItemStack stack) {
+        if (stack == null) {
+            return;
+        }
+        UUID id = plugin.maceItems().trackedId(stack);
+        if (id != null && plugin.registry().contains(id)) {
+            touched.put(id, ++eventRevision);
+        }
+        for (ItemStack child : NestedMaces.contents(stack)) {
+            touch(child);
+        }
+    }
+
+    private void touchPlayer(Player player) {
+        for (ItemStack stack : player.getInventory().getContents()) {
+            touch(stack);
+        }
+        for (ItemStack stack : player.getEnderChest().getContents()) {
+            touch(stack);
+        }
+        touch(player.getItemOnCursor());
+    }
+
+    private void touchChunk(org.bukkit.Chunk chunk) {
+        long revision = ++eventRevision;
+        for (MaceRecord record : plugin.registry().all()) {
+            MaceLocation location = record.location();
+            if (chunk.getWorld().getName().equals(location.world())
+                    && location.chunkX() == chunk.getX() && location.chunkZ() == chunk.getZ()) {
+                touched.put(record.id(), revision);
+            }
+        }
+    }
+
+    public void queueInventory(org.bukkit.inventory.Inventory inventory) {
+        if (inventory == null) {
+            return;
+        }
+        if (inventory instanceof org.bukkit.inventory.DoubleChestInventory combined) {
+            queueInventory(combined.getLeftSide());
+            queueInventory(combined.getRightSide());
+        } else if (inventory.getHolder() instanceof org.bukkit.entity.Entity entity) {
+            queueLocation(entity.getLocation());
+        } else {
+            queueLocation(inventory.getLocation());
+        }
+    }
+
+    public void queueLocation(org.bukkit.Location location) {
+        if (location != null && location.getWorld() != null
+                && location.getWorld().isChunkLoaded(location.getBlockX() >> 4, location.getBlockZ() >> 4)) {
+            queueChunk(location.getWorld().getChunkAt(location.getBlockX() >> 4, location.getBlockZ() >> 4));
+        }
+    }
+
+    public void beforeUnload(org.bukkit.Chunk chunk) {
+        touchChunk(chunk);
+        cleanup.scanChunkNow(chunk, new MaceObservations());
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void entitiesUnload(org.bukkit.event.world.EntitiesUnloadEvent event) {
+        touchChunk(event.getChunk());
+        MaceObservations seen = new MaceObservations();
+        for (org.bukkit.entity.Entity entity : event.getEntities()) {
+            if (entity instanceof Item item) {
+                reconcileGroundItem(item, plugin.maceItems(), seen);
+            } else {
+                cleanup.entity(entity, seen);
+            }
+        }
     }
 
     @EventHandler
@@ -198,7 +347,7 @@ public final class TrackingListener implements Listener {
             if (!player.isOnline()) {
                 return;
             }
-            cleanup.clean(player, new HashSet<>());
+            cleanup.clean(player, new MaceObservations());
             markDirty(player);
             auditRequested = true;
             plugin.cooldowns().reapply(player);
@@ -211,7 +360,12 @@ public final class TrackingListener implements Listener {
             markDirty(player);
         }
         ItemStack stack = event.getItem().getItemStack();
+        touch(stack);
         MaceItems.Classification classification = plugin.maceItems().classify(stack);
+        if (!(event.getEntity() instanceof Player) && plugin.settings().hasMaceLimit() && NestedMaces.contains(stack)) {
+            event.setCancelled(true);
+            return;
+        }
         if (!classification.mace()) {
             return;
         }
@@ -228,15 +382,14 @@ public final class TrackingListener implements Listener {
             Notices.send(player, plugin.settings().format("illegal-removed"));
             return;
         }
-        if (id != null) {
-            plugin.registry().hold(id, player);
-        }
+        // Actual possession is recorded from the resulting inventory, after all plugins can cancel.
     }
 
     @EventHandler(ignoreCancelled = true)
     public void onDrop(PlayerDropItemEvent event) {
         markDirty(event.getPlayer());
         Item item = event.getItemDrop();
+        touch(item.getItemStack());
         rememberGround(item);
         MaceItems.Classification classification = plugin.maceItems().classify(item.getItemStack());
         UUID id = classification.id();
@@ -253,6 +406,7 @@ public final class TrackingListener implements Listener {
     @EventHandler(ignoreCancelled = true)
     public void onSpawn(ItemSpawnEvent event) {
         Item item = event.getEntity();
+        touch(item.getItemStack());
         rememberGround(item);
         ItemStack stack = item.getItemStack();
         MaceItems.Classification classification = plugin.maceItems().classify(stack);
@@ -272,9 +426,16 @@ public final class TrackingListener implements Listener {
 
     @EventHandler(ignoreCancelled = true, priority = EventPriority.MONITOR)
     public void onDespawn(ItemDespawnEvent event) {
-        UUID id = plugin.maceItems().trackedId(event.getEntity().getItemStack());
+        destroyContents(event.getEntity().getItemStack());
+    }
+
+    private void destroyContents(ItemStack stack) {
+        UUID id = plugin.maceItems().trackedId(stack);
         if (id != null) {
             plugin.destroyMace(id);
+        }
+        for (ItemStack child : NestedMaces.contents(stack)) {
+            destroyContents(child);
         }
     }
 
@@ -292,19 +453,23 @@ public final class TrackingListener implements Listener {
         }
     }
 
-    private void reconcileGroundItem(Item item, MaceItems items, Set<UUID> seen) {
+    private void reconcileGroundItem(Item item, MaceItems items, MaceObservations seen) {
         ItemStack stack = item.getItemStack();
         MaceItems.Classification classification = items.classify(stack);
         UUID id = classification.id();
         if (classification.mace()) {
             groundItems.put(item.getUniqueId(), item);
+        } else if (NestedMaces.contains(stack)) {
+            groundItems.put(item.getUniqueId(), item);
+            cleanup.ground(item, seen);
         } else {
             groundItems.remove(item.getUniqueId());
         }
         boolean illegal = plugin.settings().hasMaceLimit()
                 && classification.mace()
                 && !classification.untracked()
-                && (id == null || !plugin.registry().contains(id) || !seen.add(id));
+                && (id == null || !plugin.registry().contains(id) || !seen.claim(id, item.getUniqueId(), () -> item.isValid() && !item.isDead()
+                        && id.equals(items.trackedId(item.getItemStack()))));
         if (illegal) {
             item.remove();
             return;
@@ -315,19 +480,20 @@ public final class TrackingListener implements Listener {
     }
 
     private void rememberGround(Item item) {
-        if (plugin.maceItems().isMace(item.getItemStack())) {
+        if (NestedMaces.contains(item.getItemStack())) {
             groundItems.put(item.getUniqueId(), item);
         }
     }
 
     private void destroyIfGone(Item item) {
-        UUID id = plugin.maceItems().trackedId(item.getItemStack());
-        if (id == null) {
+        if (!NestedMaces.contains(item.getItemStack())) {
             return;
         }
         plugin.getServer().getScheduler().runTask(plugin, () -> {
             if (!item.isValid() || item.isDead()) {
-                plugin.destroyMace(id);
+                // Removal after damage can also be a hopper/player pickup. Verify actual
+                // absence through the audit instead of invalidating a successfully stored mace.
+                auditRequested = true;
             }
         });
     }

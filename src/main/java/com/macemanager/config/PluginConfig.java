@@ -16,6 +16,7 @@ public final class PluginConfig {
     private final JavaPlugin plugin;
     private int allowedMaces = -1;
     private boolean allowMaceEnchanting = true;
+    private Map<String, Boolean> storage = Map.of();
     private boolean broadcastCrafted;
     private boolean cooldownEnabled;
     private boolean ignoreThorns = true;
@@ -46,6 +47,15 @@ public final class PluginConfig {
         int configuredLimit = config.getInt("allowed-maces", -1);
         allowedMaces = configuredLimit < 0 ? -1 : configuredLimit;
         allowMaceEnchanting = config.getBoolean("allow-mace-enchanting", true);
+        Map<String, Boolean> destinations = new LinkedHashMap<>();
+        for (String key : new String[]{"ender-chests", "shelves", "item-frames", "glow-item-frames",
+                "chests", "barrels", "shulker-boxes", "bundles", "armor-stands", "hoppers",
+                "droppers", "dispensers", "decorated-pots", "crafters"}) {
+            boolean defaultAllowed = key.equals("ender-chests") || key.equals("shelves")
+                    || key.equals("item-frames") || key.equals("glow-item-frames");
+            destinations.put(key, config.getBoolean("mace-storage." + key, defaultAllowed));
+        }
+        storage = Map.copyOf(destinations);
         broadcastCrafted = config.getBoolean("broadcasts.crafted", false);
         cooldownEnabled = config.getBoolean("cooldown.enabled", false);
         ignoreThorns = config.getBoolean("cooldown.ignore-thorns", true);
@@ -134,6 +144,10 @@ public final class PluginConfig {
 
     public boolean allowMaceEnchanting() {
         return allowMaceEnchanting;
+    }
+
+    public boolean storageAllowed(String destination) {
+        return storage.getOrDefault(destination, false);
     }
 
     public boolean broadcastCrafted() {

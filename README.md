@@ -6,12 +6,14 @@ limit, and applies cooldowns based on mace and armor enchantments.
 
 ## Features
 
-- **Server-wide mace limit:** unlimited by default, matching vanilla. Set `allowed-maces` to a positive number to cap tracked maces. Offline owners still count toward a cap.
+- **Server-wide mace limit:** unlimited by default. Set `allowed-maces` to a positive number to cap tracked maces. Offline owners and stored maces still count toward a cap.
 - **SQLite ownership tracking:** keep track of holders and dropped maces across
   restarts in a local database, with automatic import from older YAML registries.
-- **Duplicate enforcement:** audit loaded player inventories and ground items,
-  removing illegal maces and duplicate tracked identities.
-- **Storage restrictions:** while a mace limit is set, block maces from containers, bundles of every color, item frames, armor stands, and decorated pots. Automated crafters cannot create maces.
+- **Duplicate enforcement:** audit loaded player inventories, storage, displays,
+  and ground items, removing illegal maces and duplicate tracked identities.
+- **Storage controls:** allow or block each supported storage type independently
+  of the mace cap. Ender chests, shelves, and both frame types are allowed by
+  default. Stored/displayed maces retain their recorded owners.
 - **Configurable combat cooldowns:** off by default, matching vanilla. Turn `cooldown.enabled` on and set `base-seconds` to add a delay, then add or subtract seconds for enchantments on the mace and each worn armor piece.
 - **Optional wind-charge cooldown:** configure a separate delay between launches.
 - **Enchanting controls:** toggle mace access to anvils and enchanting tables.
@@ -65,9 +67,9 @@ personal storage such as an ender chest. Loading records needs no online player,
 loaded world, or loaded chunk. Moving a record to storage preserves its owner;
 actual player possession updates ownership and marks it carried.
 
-This is persistence support for the planned storage controls. Placement listeners
-and cleanup/audit integration are still pending; the existing storage restrictions
-remain in effect and the `mace-storage` settings are not active yet.
+Placement and cleanup use the same `mace-storage` rules. Viewing storage does not
+transfer ownership. Taking a mace into a player's inventory or cursor does;
+portable containers retain the mace's recorded owner while carrying it inside.
 
 Existing SQLite databases upgrade transactionally to schema version 2 on startup,
 preserving owners and dropped world/chunk references. Back up before upgrading;
@@ -132,9 +134,55 @@ wind-charge:
 
 ### Limits and storage
 
-`allowed-maces` controls registered maces across the server, including offline owners. `-1`, the default, matches vanilla: crafting, containers, and existing maces are left alone. `0` blocks new tracked crafts. A positive number caps tracked maces and removes maces that have no id. Lowering a positive limit does not delete existing registered maces. Once that cap is reached, further crafting is blocked until a tracked mace is destroyed or removed, or the limit is raised.
+`allowed-maces` controls registered maces across the server, including offline owners. `-1`, the default, disables the cap and illegal-ID enforcement; storage rules still apply. `0` blocks new tracked crafts. A positive number caps tracked maces and removes maces that have no id. Lowering a positive limit does not delete existing registered maces. Once that cap is reached, further crafting is blocked until a tracked mace is destroyed or removed, or the limit is raised.
 
-Container bans, hopper pickup blocks, and crafter blocking apply only while a limit is set. Players can carry maces and use grindstones. Anvils and enchanting tables are available when `allow-mace-enchanting` is `true`.
+Storage rules apply even with `allowed-maces: -1`. These are the defaults:
+
+```yaml
+mace-storage:
+  ender-chests: true
+  shelves: true
+  item-frames: true
+  glow-item-frames: true
+  chests: false
+  barrels: false
+  shulker-boxes: false
+  bundles: false
+  armor-stands: false
+  hoppers: false
+  droppers: false
+  dispensers: false
+  decorated-pots: false
+  crafters: false
+```
+
+Players can carry maces and use grindstones. Anvils and enchanting tables follow
+`allow-mace-enchanting`. Unsupported storage types are blocked. Shelves work only
+on server versions that provide them; the plugin still compiles against 1.21.4.
+Chest/hopper rules also cover vehicles with those inventory types. The crafter
+option controls its inventory slots; automated creation of tracked maces remains
+blocked while a cap is enabled.
+
+Clicks, shift-clicks, drags, number-key/offhand swaps, direct shelf/display
+interactions, and automated transfers use the destination's rule. Extraction from
+blocked storage remains possible. Portable contents must be allowed in every
+outer destination as well as in the bundle/shulker itself. Cleanup returns maces
+from forbidden storage to a viewer when possible, otherwise drops them nearby.
+Run `/maces reload` after editing these settings; loaded storage is queued for
+reconciliation and online players are checked again.
+
+Full audits inspect storage in server-thread scan units. Shared inventories and
+double chests are recognized as the same physical slots, while distinct copies
+of a tracked ID are removed. Offline personal storage and unloaded world/chunk
+references remain registered without loading them. Menus created by other plugins
+with no physical location cannot be verified after they close; their records
+remain reserved until rediscovered or removed administratively.
+
+If an audit cannot find a mace, a final same-tick pass confirms absence before
+invalidating its record, protecting items moved by plugins without events. This
+rare verification, and capturing storage on chunk unload, may exceed the normal
+cooperative scan budget. The reported full-audit timing measures elapsed time
+across scheduled ticks; performance has not been benchmarked on a live server.
 
 Administrator-issued untracked maces bypass the count and tracked-ID enforcement;
 they still follow storage restrictions and cooldown rules.

@@ -75,6 +75,26 @@ class PluginConfigTest {
         assertEquals(0, YamlConfiguration.loadConfiguration(file.toFile()).getInt("cooldown.base-seconds", -1));
     }
 
+    @Test
+    void storageDefaultsAndReloadApplyIndependentlyOfMaceLimit() throws Exception {
+        Path file = directory.resolve("config.yml");
+        Files.writeString(file, "allowed-maces: -1\n");
+        PluginConfig settings = new PluginConfig(configuredPlugin(file));
+        settings.load();
+        assertFalse(settings.hasMaceLimit());
+        assertTrue(settings.storageAllowed("ender-chests"));
+        assertTrue(settings.storageAllowed("shelves"));
+        assertTrue(settings.storageAllowed("item-frames"));
+        assertTrue(settings.storageAllowed("glow-item-frames"));
+        assertFalse(settings.storageAllowed("chests"));
+        assertFalse(settings.storageAllowed("unsupported"));
+        Files.writeString(file, "allowed-maces: -1\nmace-storage:\n  ender-chests: false\n  chests: true\n");
+        settings.load();
+        assertFalse(settings.storageAllowed("ender-chests"));
+        assertTrue(settings.storageAllowed("chests"));
+        assertFalse(settings.hasMaceLimit());
+    }
+
     private JavaPlugin configuredPlugin(Path file) {
         JavaPlugin plugin = mock(JavaPlugin.class);
         when(plugin.getDataFolder()).thenReturn(directory.toFile());

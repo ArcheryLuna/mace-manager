@@ -1,5 +1,5 @@
 # Maximum tracked maces.
-# -1 matches vanilla: no cap, chests and crafters work, and existing maces are left alone.
+# -1 disables the cap and illegal-id enforcement. Storage rules below still apply.
 # 0 allows none. A positive number caps tracked maces and removes maces without an id.
 # Offline holders still count. Lowering a positive limit does not delete tracked maces.
 allowed-maces: -1
@@ -7,11 +7,14 @@ allowed-maces: -1
 # When false, maces cannot be placed in an enchanting table or an anvil.
 allow-mace-enchanting: true
 
-# Planned storage controls; these settings are not enforced by the current code yet.
-# Once implemented, true will allow placement and false will block placement.
-# Allowed storage will retain the recorded owner and count toward the mace limit.
+# Storage controls: true allows placement; false blocks placement.
+# Allowed storage retains the recorded owner and counts toward the mace limit.
 # Taking possession will transfer ownership; viewing storage will not.
-# These controls are intended to apply independently of allowed-maces.
+# These controls apply independently of allowed-maces.
+# Portable storage must also be allowed in every outer destination containing it.
+# Disallowed stored maces are returned to a viewer or dropped nearby during cleanup.
+# Unknown storage/workstation types are blocked; enchanting is controlled above.
+# Chest and hopper options also cover vehicles with those inventory types.
 # Only destinations supported by the server's Minecraft version can be used.
 mace-storage:
   ender-chests: true
@@ -26,6 +29,9 @@ mace-storage:
   hoppers: false
   droppers: false
   dispensers: false
+  decorated-pots: false
+  # Allows storage in crafter slots, not automated crafting of tracked maces.
+  crafters: false
 
 broadcasts:
   # Set true to announce when a player crafts a tracked mace.
@@ -68,6 +74,8 @@ wind-charge:
   seconds: 30
 
 # Scan budgets are cooperative: a single inventory or chunk query can exceed the time limit.
+# Confirming an apparently missing record and capturing chunk unloads use same-tick
+# safety checks, which may also exceed this budget.
 performance:
   scan-units-per-tick: 32
   scan-budget-ms: 2.0
@@ -87,7 +95,7 @@ messages:
   # Remove %player% from this message to announce crafting without naming the player.
   crafted-broadcast: "&a%player% &7crafted a mace. &7(%current%/%max%)"
   destroyed-broadcast: "&cA mace was destroyed. &7(last held by &f%lastHolder%&7) &7(%current%/%max%)"
-  containers-blocked: "&cYou can't put the mace in any container."
+  containers-blocked: "&cYou can't put the mace in this storage."
   limit-reached: "&cMace limit reached. A mace must be destroyed before another can be crafted."
   illegal-removed: "&cAn illegal mace was removed."
   enchanting-blocked: "&cMaces cannot be enchanted."

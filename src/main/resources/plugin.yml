@@ -2,7 +2,7 @@ name: MaceManager
 version: '${version}'
 main: com.macemanager.MaceManagerPlugin
 api-version: '1.21'
-description: Tracks maces in SQLite, enforces configurable limits, and applies mace cooldowns.
+description: Tracks mace ownership in SQLite with configurable limits, storage rules, and cooldowns.
 author: ArcheryLuna
 website: https://github.com/ArcheryLuna/mace-manager
 softdepend:
