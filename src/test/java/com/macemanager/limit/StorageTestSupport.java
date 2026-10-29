@@ -91,6 +91,7 @@ class StorageTestSupport {
         when(server.getPlayer(any(UUID.class))).thenAnswer(call -> players.stream()
                 .filter(player -> player.isOnline() && player.getUniqueId().equals(call.getArgument(0))).findFirst().orElse(null));
         Block empty = mock(Block.class);
+        when(empty.getType()).thenReturn(Material.AIR);
         BlockState air = mock(BlockState.class);
         when(empty.getState()).thenReturn(air);
         when(world.getBlockAt(anyInt(), anyInt(), anyInt())).thenAnswer(call -> blocks.getOrDefault(

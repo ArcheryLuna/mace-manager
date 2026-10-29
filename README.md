@@ -171,6 +171,15 @@ from forbidden storage to a viewer when possible, otherwise drops them nearby.
 Run `/maces reload` after editing these settings; loaded storage is queued for
 reconciliation and online players are checked again.
 
+Shelf support uses optional inventory names and standard block-data properties,
+so the plugin keeps its 1.21.4 API target without linking newer shelf classes.
+Direct front-face interactions check the main hand; powered shelves check the
+three, six, or nine hotbar slots selected by their connection state. Unknown
+connection data or an unloaded neighbour conservatively checks all nine slots.
+Connected shelves across loaded chunk boundaries are queued after an interaction;
+these checks never load neighbouring chunks. Shelf interactions still need live
+validation on the server implementation being deployed.
+
 Full audits inspect storage in server-thread scan units. Shared inventories and
 double chests are recognized as the same physical slots, while distinct copies
 of a tracked ID are removed. Allowed bundle/shulker contents participate in the

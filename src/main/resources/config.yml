@@ -18,6 +18,7 @@ allow-mace-enchanting: true
 # Only destinations supported by the server's Minecraft version can be used.
 mace-storage:
   ender-chests: true
+  # Requires a server version with shelves; includes direct and powered hotbar swaps.
   shelves: true
   item-frames: true
   glow-item-frames: true

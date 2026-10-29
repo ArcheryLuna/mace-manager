@@ -9,7 +9,6 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.EventPriority;
-import org.bukkit.block.data.Powerable;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockDispenseEvent;
 import org.bukkit.event.inventory.ClickType;
@@ -114,20 +113,25 @@ public final class ContainerListener implements Listener {
         Notices.send(event.getPlayer(), plugin.settings().format("containers-blocked"));
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGHEST)
     public void onPot(PlayerInteractEvent event) {
-        if (event.getClickedBlock() == null || event.getAction() != Action.RIGHT_CLICK_BLOCK) {
+        if (event.getClickedBlock() == null || event.getAction() != Action.RIGHT_CLICK_BLOCK
+                || event.useInteractedBlock() == org.bukkit.event.Event.Result.DENY) {
             return;
         }
         String type = event.getClickedBlock().getType().name();
-        boolean shelf = type.endsWith("_SHELF");
+        boolean shelf = ShelfSupport.isShelf(event.getClickedBlock());
         if (!shelf && !type.equals("DECORATED_POT")) {
             return;
         }
-        boolean incoming = NestedMaces.contains(event.getItem());
-        // Powered shelves can exchange the hotbar, including slots outside the held hand.
-        if (shelf && event.getClickedBlock().getBlockData() instanceof Powerable power && power.isPowered()) {
-            for (int slot = 0; slot < 9; slot++) {
+        if (shelf && !ShelfSupport.interacts(event)) {
+            return;
+        }
+        boolean incoming = NestedMaces.contains(shelf
+                ? event.getPlayer().getInventory().getItemInMainHand() : event.getItem());
+        if (shelf && ShelfSupport.powered(event.getClickedBlock())) {
+            incoming = false; // Powered swaps do not necessarily include the selected slot.
+            for (int slot = ShelfSupport.firstHotbarSlot(event.getClickedBlock()); slot < 9; slot++) {
                 incoming |= NestedMaces.contains(event.getPlayer().getInventory().getItem(slot));
             }
         }
@@ -167,17 +171,28 @@ public final class ContainerListener implements Listener {
         }
     }
 
-    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.MONITOR)
     public void afterBlockInteract(PlayerInteractEvent event) {
-        if (event.getClickedBlock() != null) {
+        if (event.getClickedBlock() != null && event.getAction() == Action.RIGHT_CLICK_BLOCK
+                && event.useInteractedBlock() != org.bukkit.event.Event.Result.DENY) {
             String type = event.getClickedBlock().getType().name();
-            if (type.endsWith("_SHELF") || type.equals("DECORATED_POT")) {
+            boolean shelf = ShelfSupport.interacts(event);
+            if (shelf || type.equals("DECORATED_POT")) {
                 for (int slot = 0; slot < 9; slot++) {
                     plugin.tracking().touch(event.getPlayer().getInventory().getItem(slot));
                 }
                 plugin.tracking().touch(event.getItem());
                 plugin.tracking().markDirty(event.getPlayer());
                 plugin.tracking().queueLocation(event.getClickedBlock().getLocation());
+                if (shelf && ShelfSupport.powered(event.getClickedBlock())) {
+                    // A three-shelf chain can cross a chunk boundary. Queue all possible
+                    // neighbouring chain chunks without loading any of them.
+                    var location = event.getClickedBlock().getLocation();
+                    for (int offset : new int[]{-2, 2}) {
+                        plugin.tracking().queueLocation(location.clone().add(offset, 0, 0));
+                        plugin.tracking().queueLocation(location.clone().add(0, 0, offset));
+                    }
+                }
             }
         }
     }
