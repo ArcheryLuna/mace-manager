@@ -37,7 +37,7 @@ validation on those server implementations.
 ## Installation
 
 1. Build the plugin using the instructions below, or obtain a trusted prebuilt JAR.
-2. Stop your server and place `MaceManager-1.0.1.jar` in its `plugins/` folder.
+2. Stop your server and place `MaceManager-1.1.0.jar` in its `plugins/` folder.
 3. Start the server to generate `plugins/MaceManager/config.yml`.
 4. Edit the settings, then run `/maces reload` to apply them. Changes to
    `performance.async-registry-writes` require a restart.
@@ -315,7 +315,7 @@ Use the checked-in Gradle wrapper with a discoverable Java 21 JDK:
 ./gradlew test build
 ```
 
-The resulting JAR is written to `build/libs/MaceManager-1.0.1.jar`. Test reports are
+The resulting JAR is written to `build/libs/MaceManager-1.1.0.jar`. Test reports are
 written to `build/reports/tests/test/index.html`. The first build needs network
 access to download Gradle and dependencies.
 
