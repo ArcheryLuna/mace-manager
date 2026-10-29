@@ -173,8 +173,13 @@ reconciliation and online players are checked again.
 
 Full audits inspect storage in server-thread scan units. Shared inventories and
 double chests are recognized as the same physical slots, while distinct copies
-of a tracked ID are removed. Offline personal storage and unloaded world/chunk
-references remain registered without loading them. Menus created by other plugins
+of a tracked ID are removed. Allowed bundle/shulker contents participate in the
+same checks, including portable storage on the ground. Each registered identity
+uses one cap slot regardless of location, including after a database reload.
+Illegally stacked tracked maces or portable containers still containing them are
+reduced to one copy while a cap is enabled. Empty containers and administrator
+maces retain their existing exemptions. Offline personal storage and unloaded
+world/chunk references remain registered without loading them. Menus created by other plugins
 with no physical location cannot be verified after they close; their records
 remain reserved until rediscovered or removed administratively.
 

@@ -66,6 +66,7 @@ class StorageTestSupport {
     final List<Player> players = new ArrayList<>();
     final List<Chunk> chunks = new ArrayList<>();
     final List<Item> ground = new ArrayList<>();
+    final Map<List<Integer>, Block> blocks = new HashMap<>();
     final Set<String> allowed = new java.util.HashSet<>(Set.of("ender-chests", "shelves", "item-frames", "glow-item-frames"));
     final TrackingListener tracking;
 
@@ -89,6 +90,11 @@ class StorageTestSupport {
         when(server.getOnlinePlayers()).thenAnswer(call -> players.stream().filter(Player::isOnline).toList());
         when(server.getPlayer(any(UUID.class))).thenAnswer(call -> players.stream()
                 .filter(player -> player.isOnline() && player.getUniqueId().equals(call.getArgument(0))).findFirst().orElse(null));
+        Block empty = mock(Block.class);
+        BlockState air = mock(BlockState.class);
+        when(empty.getState()).thenReturn(air);
+        when(world.getBlockAt(anyInt(), anyInt(), anyInt())).thenAnswer(call -> blocks.getOrDefault(
+                List.of(call.getArgument(0), call.getArgument(1), call.getArgument(2)), empty));
         when(world.getLoadedChunks()).thenAnswer(call -> chunks.toArray(Chunk[]::new));
         when(world.getEntitiesByClass(Item.class)).thenAnswer(call -> List.copyOf(ground));
         when(world.getChunkAt(anyInt(), anyInt())).thenAnswer(call -> chunks.stream()
@@ -214,6 +220,7 @@ class StorageTestSupport {
         when(state.getLocation()).thenReturn(at(x, y, z));
         when(block.getLocation()).thenReturn(at(x, y, z));
         when(block.getState()).thenReturn(state);
+        blocks.put(List.of(x, y, z), block);
         return state;
     }
 

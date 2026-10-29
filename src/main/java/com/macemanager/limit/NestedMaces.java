@@ -9,6 +9,7 @@ import org.bukkit.inventory.meta.BundleMeta;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.Predicate;
 
 /** Reads/writes portable storage without extracting allowed maces during an audit. */
 final class NestedMaces {
@@ -46,14 +47,18 @@ final class NestedMaces {
     }
 
     static boolean contains(ItemStack item) {
+        return contains(item, stack -> true);
+    }
+
+    static boolean contains(ItemStack item, Predicate<ItemStack> match) {
         if (item == null) {
             return false;
         }
         if (item.getType() == Material.MACE) {
-            return true;
+            return match.test(item);
         }
         for (ItemStack child : contents(item)) {
-            if (contains(child)) {
+            if (contains(child, match)) {
                 return true;
             }
         }

@@ -474,6 +474,11 @@ public final class TrackingListener implements Listener {
             item.remove();
             return;
         }
+        if (plugin.settings().hasMaceLimit() && classification.mace() && !classification.untracked()
+                && stack.getAmount() > 1) {
+            stack.setAmount(1);
+            item.setItemStack(stack);
+        }
         if (id != null) {
             plugin.registry().markDropped(id, item.getLocation());
         }

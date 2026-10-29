@@ -31,6 +31,9 @@ public final class PlayerMaceCleanup {
     private record Slot(Object inventory, Object index) {
     }
 
+    private record BlockInventory(String world, int x, int y, int z) {
+    }
+
     private record Site(Object key, MaceLocation location, Player possessor,
                         boolean allowed, Supplier<ItemStack> live) {
     }
@@ -212,7 +215,7 @@ public final class PlayerMaceCleanup {
             MaceLocation checkedLocation = physical;
             Object key = inventoryKey(source, physical, possessor);
             Site site = new Site(new Slot(key, index), physical, possessor, allowed,
-                    () -> active.getAsBoolean() && loaded(checkedLocation) ? source.getItem(sourceSlot) : null);
+                    () -> liveItem(source, sourceSlot, checkedLocation, active));
             Inspection result = inspect(source.getItem(index), site, seen, ejected);
             if (result.changed()) {
                 source.setItem(index, result.item());
@@ -235,14 +238,38 @@ public final class PlayerMaceCleanup {
         if (location.entity() != null) {
             return location.entity();
         }
+        if (location.inventoryOwner() != null && !location.storageType().startsWith("OPEN_")) {
+            // Personal inventories remain distinct even when opened at the same block.
+            return location;
+        }
         if (location.state() != MaceLocation.State.CARRIED && location.storageType() != null
                 && !location.storageType().startsWith("OPEN_")) {
-            // Double chest inventories have the same midpoint from either half/viewer.
             Location actual = inventory.getLocation();
             return actual != null && actual.getWorld() != null
-                    ? blockLocation(location.storageType(), actual) : location;
+                    ? new BlockInventory(actual.getWorld().getName(), actual.getBlockX(), actual.getBlockY(), actual.getBlockZ())
+                    : new BlockInventory(location.world(), location.blockX(), location.blockY(), location.blockZ());
         }
         return inventory;
+    }
+
+    private ItemStack liveItem(Inventory inventory, int slot, MaceLocation location, BooleanSupplier active) {
+        if (!active.getAsBoolean() || !loaded(location)) {
+            return null;
+        }
+        if (location.blockX() != null) {
+            // A captured inventory may outlive a broken/replaced block between scan units.
+            var world = plugin.getServer().getWorld(location.world());
+            var block = world.getBlockAt(location.blockX(), location.blockY(), location.blockZ());
+            if (!(plugin.chunkAccess().state(block) instanceof InventoryHolder holder)) {
+                return null;
+            }
+            Inventory current = StorageRules.inventory(holder);
+            return slot < current.getSize() ? current.getItem(slot) : null;
+        }
+        if (inventory.getHolder() instanceof Entity entity && !(entity instanceof Player) && !entity.isValid()) {
+            return null;
+        }
+        return inventory.getItem(slot);
     }
 
     private MaceLocation location(Inventory inventory, Player viewer) {
@@ -324,6 +351,14 @@ public final class PlayerMaceCleanup {
         }
         if (changed) {
             NestedMaces.contents(stack, children);
+        }
+        // One metadata tree in an illegally stacked container represents multiple physical
+        // copies. Keep one only when registered maces survived the contents inspection.
+        if (plugin.settings().hasMaceLimit() && stack.getAmount() > 1
+                && NestedMaces.contains(stack, child -> plugin.registry().contains(plugin.maceItems().trackedId(child)))) {
+            stack.setAmount(1);
+            illegalRemoved++;
+            changed = true;
         }
         return new Inspection(stack, changed);
     }
