@@ -298,6 +298,10 @@ class StorageIntegrationTest {
         assertTrue(f.records.containsKey(id));
         assertSame(mace, person.inventory().slots()[0]);
         assertEquals(MaceLocation.State.CARRIED, f.records.get(id).location().state());
+        // The mandatory audit still scans the world once; player verification settles
+        // this missing candidate without another world-wide inventory/entity query.
+        verify(f.world, times(1)).getLoadedChunks();
+        verify(f.world, times(1)).getEntitiesByClass(org.bukkit.entity.Item.class);
     }
 
     @Test

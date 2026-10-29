@@ -250,6 +250,70 @@ class StorageLifecycleTest {
         f.drain();
     }
 
+    @Test
+    void destructionBurstUsesOneTaskAndPreservesItemsWhoseDespawnWasCancelled() {
+        var lost = new java.util.ArrayList<UUID>();
+        var surviving = new java.util.ArrayList<UUID>();
+        for (int index = 0; index < 32; index++) {
+            UUID id = UUID.randomUUID();
+            Item item = drop(f.mace(id, UUID.randomUUID()));
+            for (int repeat = 0; repeat < 3; repeat++) {
+                f.tracking.onDespawn(new ItemDespawnEvent(item, item.getLocation()));
+            }
+            if (index % 2 == 0) {
+                when(item.isValid()).thenReturn(false);
+                lost.add(id);
+            } else {
+                surviving.add(id);
+            }
+        }
+        assertEquals(1, f.tasks.size(), "96 loss events should share one scheduled check");
+        f.nextTick();
+        audit();
+        lost.forEach(id -> assertFalse(f.records.containsKey(id)));
+        surviving.forEach(id -> assertTrue(f.records.containsKey(id)));
+        assertEquals(16, f.records.size());
+        // Finishing a batch must allow the next tick to schedule another check.
+        Item later = drop(f.mace(UUID.randomUUID(), UUID.randomUUID()));
+        f.tracking.onDespawn(new ItemDespawnEvent(later, later.getLocation()));
+        assertEquals(1, f.tasks.size());
+    }
+
+    @Test
+    void coalescingPreservesEveryIdentityObservedBeforeItemContentsChange() {
+        UUID first = UUID.randomUUID();
+        UUID second = UUID.randomUUID();
+        Item item = drop(f.mace(first, UUID.randomUUID()));
+        f.tracking.onDespawn(new ItemDespawnEvent(item, item.getLocation()));
+        ItemStack replacement = f.mace(second, UUID.randomUUID());
+        f.records.get(second).markDropped("world", 0, 0);
+        when(item.getItemStack()).thenReturn(replacement);
+        f.tracking.onDespawn(new ItemDespawnEvent(item, item.getLocation()));
+        when(item.isValid()).thenReturn(false);
+        assertEquals(1, f.tasks.size());
+        f.nextTick();
+        when(f.settings.hasMaceLimit()).thenReturn(false);
+        audit();
+        assertFalse(f.records.containsKey(first));
+        assertFalse(f.records.containsKey(second));
+    }
+
+    @Test
+    void findingOneCandidateInPlayersStillVerifiesOtherMissingIdentities() {
+        var player = f.player("Owner");
+        UUID moved = UUID.randomUUID();
+        UUID missing = UUID.randomUUID();
+        ItemStack mace = f.mace(moved, player.player().getUniqueId());
+        f.mace(missing, player.player().getUniqueId());
+        f.tracking.reconcileAll();
+        f.scans.tick(1, Long.MAX_VALUE);
+        player.inventory().slots()[0] = mace;
+        f.drain();
+        assertTrue(f.records.containsKey(moved));
+        assertFalse(f.records.containsKey(missing));
+        verify(f.world, times(2)).getLoadedChunks();
+    }
+
     private Item drop(ItemStack stack) {
         return f.world.dropItemNaturally(f.at(1, 64, 1), stack);
     }

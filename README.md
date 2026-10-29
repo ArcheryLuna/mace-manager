@@ -197,6 +197,9 @@ invalidating its record, protecting items moved by plugins without events. This
 rare verification, and capturing storage on chunk unload, may exceed the normal
 cooperative scan budget. The reported full-audit timing measures elapsed time
 across scheduled ticks; performance has not been benchmarked on a live server.
+Loss events share one next-tick entity check, and portable contents are traversed
+once per event to collect identities. Missing-item verification stops after its
+player pass if every candidate is found; the regular full audit remains unchanged.
 
 Administrator-issued untracked maces bypass the count and tracked-ID enforcement;
 they still follow storage restrictions and cooldown rules.

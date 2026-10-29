@@ -36,6 +36,8 @@ public final class TrackingListener implements Listener {
     private long eventRevision;
     private final Map<UUID, Long> touched = new HashMap<>();
     private final Set<UUID> destructionCandidates = new HashSet<>();
+    private final Map<Item, Set<UUID>> pendingDestructionChecks = new HashMap<>();
+    private boolean destructionCheckScheduled;
 
     public TrackingListener(MaceManagerPlugin plugin) {
         this.plugin = plugin;
@@ -238,6 +240,11 @@ public final class TrackingListener implements Listener {
         MaceObservations confirmed = new MaceObservations();
         for (Player player : plugin.getServer().getOnlinePlayers()) {
             cleanup.clean(player, confirmed);
+        }
+        // The full audit already covered storage and duplicates. This extra pass only
+        // proves absence; finding every candidate in live player slots settles it.
+        if (candidates.stream().allMatch(record -> confirmed.contains(record.id()))) {
+            return;
         }
         for (World world : plugin.getServer().getWorlds()) {
             for (org.bukkit.Chunk chunk : world.getLoadedChunks()) {
@@ -487,22 +494,34 @@ public final class TrackingListener implements Listener {
     }
 
     private void destroyIfGone(Item item) {
-        if (!NestedMaces.contains(item.getItemStack())) {
+        ItemStack stack = item.getItemStack();
+        if (stack == null || (stack.getType() != org.bukkit.Material.MACE && NestedMaces.destination(stack) == null)) {
             return;
         }
         Set<UUID> candidates = new HashSet<>();
-        collectIds(item.getItemStack(), candidates);
+        // Collect in one traversal instead of first walking the same portable contents
+        // with contains(). Preserve IDs from every event if the item's contents change.
+        collectIds(stack, candidates);
         if (candidates.isEmpty()) {
             return;
         }
+        pendingDestructionChecks.computeIfAbsent(item, ignored -> new HashSet<>()).addAll(candidates);
+        if (destructionCheckScheduled) {
+            return;
+        }
+        destructionCheckScheduled = true;
         plugin.getServer().getScheduler().runTask(plugin, () -> {
-            if (!item.isValid() || item.isDead()) {
-                // Entity loss can be a pickup or a despawning duplicate. Verify the
-                // surviving identity before releasing its cap slot, even with the cap off.
-                auditRequested = true;
-                // Coalesce losses into the normal cooperative audit. Failed scans retain
-                // candidates for retry; do not run one full-world scan per damaged item.
-                destructionCandidates.addAll(candidates);
+            var pending = new HashMap<>(pendingDestructionChecks);
+            pendingDestructionChecks.clear();
+            destructionCheckScheduled = false;
+            for (var entry : pending.entrySet()) {
+                Item checked = entry.getKey();
+                if (!checked.isValid() || checked.isDead()) {
+                    // Pickups and duplicate despawns need the same full-audit verification.
+                    // Failed audits retain candidates for retry, including with the cap off.
+                    auditRequested = true;
+                    destructionCandidates.addAll(entry.getValue());
+                }
             }
         });
     }
