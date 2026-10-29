@@ -7,6 +7,26 @@ allowed-maces: -1
 # When false, maces cannot be placed in an enchanting table or an anvil.
 allow-mace-enchanting: true
 
+# Planned storage controls; these settings are not enforced by the current code yet.
+# Once implemented, true will allow placement and false will block placement.
+# Allowed storage will retain the recorded owner and count toward the mace limit.
+# Taking possession will transfer ownership; viewing storage will not.
+# These controls are intended to apply independently of allowed-maces.
+# Only destinations supported by the server's Minecraft version can be used.
+mace-storage:
+  ender-chests: true
+  shelves: true
+  item-frames: true
+  glow-item-frames: true
+  chests: false
+  barrels: false
+  shulker-boxes: false
+  bundles: false
+  armor-stands: false
+  hoppers: false
+  droppers: false
+  dispensers: false
+
 broadcasts:
   # Set true to announce when a player crafts a tracked mace.
   # Edit messages.crafted-broadcast below to customize the announcement.

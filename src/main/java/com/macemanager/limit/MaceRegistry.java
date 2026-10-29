@@ -198,6 +198,14 @@ public final class MaceRegistry {
         }
     }
 
+    /** Server thread only. Retains ownership and uses the normal batched persistence path. */
+    public void locate(UUID id, MaceLocation location) {
+        MaceRecord record = maces.get(id);
+        if (record != null && record.setLocation(location)) {
+            changed();
+        }
+    }
+
     public void markDropped(UUID id, Location location) {
         MaceRecord record = maces.get(id);
         if (record == null || location.getWorld() == null) {

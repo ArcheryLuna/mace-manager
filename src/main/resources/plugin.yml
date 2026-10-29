@@ -3,6 +3,8 @@ version: '${version}'
 main: com.macemanager.MaceManagerPlugin
 api-version: '1.21'
 description: Tracks maces in SQLite, enforces configurable limits, and applies mace cooldowns.
+author: ArcheryLuna
+website: https://github.com/ArcheryLuna/mace-manager
 softdepend:
   - LuckPerms
 commands:

@@ -123,13 +123,103 @@ class SqliteMaceStoreTest {
     }
 
     @Test
+    void storageAndDisplayLocationsRoundTripWithOfflineOwners() throws Exception {
+        UUID owner = UUID.randomUUID();
+        List<MaceLocation> locations = List.of(
+                MaceLocation.carried(),
+                MaceLocation.dropped("unloaded-world", -2, 14),
+                MaceLocation.block(MaceLocation.State.STORED, "SHELF", "unloaded-world", -17, 70, 33),
+                MaceLocation.entity(MaceLocation.State.DISPLAYED, "GLOW_ITEM_FRAME", "unloaded-world",
+                        -2, 2, UUID.randomUUID()),
+                MaceLocation.entity(MaceLocation.State.STORED, "CHEST_MINECART", "unloaded-world",
+                        -2, 2, UUID.randomUUID()),
+                MaceLocation.playerStorage("ENDER_CHEST", owner));
+        List<MaceSnapshot> records = locations.stream()
+                .map(location -> new MaceSnapshot(UUID.randomUUID(), owner, "OfflinePlayer", location)).toList();
+        store().load();
+        store().write(records);
+        assertEquals(records, store().load());
+        assertEquals(records, store().load().stream().map(MaceSnapshot::record).map(MaceSnapshot::from).toList());
+        // A failed replacement must preserve all stored/displayed references as well as owners.
+        assertThrows(SQLException.class, () -> store().write(List.of(records.get(2), records.get(2))));
+        assertEquals(records, store().load());
+    }
+
+    @Test
+    void upgradesVersionOneWithoutChangingOwnersOrDroppedChunks() throws Exception {
+        UUID owner = UUID.randomUUID();
+        UUID held = UUID.randomUUID();
+        UUID dropped = UUID.randomUUID();
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + database());
+             var statement = connection.createStatement()) {
+            statement.executeUpdate("""
+                    CREATE TABLE maces (
+                        id TEXT PRIMARY KEY NOT NULL, holder TEXT, holder_name TEXT NOT NULL,
+                        dropped INTEGER NOT NULL CHECK (dropped IN (0, 1)), drop_world TEXT,
+                        drop_chunk_x INTEGER NOT NULL, drop_chunk_z INTEGER NOT NULL,
+                        CHECK (dropped = 0 OR drop_world IS NOT NULL))
+                    """);
+            statement.executeUpdate("CREATE TABLE registry_metadata (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL)");
+            statement.executeUpdate("INSERT INTO registry_metadata VALUES ('initialized', '1')");
+            statement.execute("PRAGMA user_version = 1");
+            try (var insert = connection.prepareStatement("INSERT INTO maces VALUES (?, ?, ?, ?, ?, ?, ?)")) {
+                for (UUID id : List.of(held, dropped)) {
+                    boolean ground = id.equals(dropped);
+                    insert.setString(1, id.toString());
+                    insert.setString(2, owner.toString());
+                    insert.setString(3, "OfflinePlayer");
+                    insert.setInt(4, ground ? 1 : 0);
+                    insert.setString(5, ground ? "unloaded-world" : null);
+                    insert.setInt(6, ground ? -2 : 0);
+                    insert.setInt(7, ground ? 14 : 0);
+                    insert.executeUpdate();
+                }
+            }
+        }
+        // The initialized database must ignore stale legacy data during the upgrade.
+        Files.writeString(directory.resolve("maces.yml"), "maces: [broken");
+        List<MaceSnapshot> expected = List.of(
+                new MaceSnapshot(held, owner, "OfflinePlayer", MaceLocation.carried()),
+                new MaceSnapshot(dropped, owner, "OfflinePlayer", MaceLocation.dropped("unloaded-world", -2, 14)));
+        assertEquals(expected, store().load());
+        assertEquals(expected, store().load());
+        store().write(expected);
+        assertEquals(expected, store().load());
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + database());
+             var statement = connection.createStatement();
+             var result = statement.executeQuery("PRAGMA user_version")) {
+            assertTrue(result.next());
+            assertEquals(2, result.getInt(1));
+        }
+    }
+
+    @Test
+    void invalidLocationAbortsLoadingWithoutErasingOwnership() throws Exception {
+        store().load();
+        MaceSnapshot record = new MaceSnapshot(UUID.randomUUID(), UUID.randomUUID(), "OfflinePlayer",
+                MaceLocation.playerStorage("ENDER_CHEST", UUID.randomUUID()));
+        store().write(List.of(record));
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + database());
+             var statement = connection.createStatement()) {
+            statement.executeUpdate("UPDATE maces SET location_state = 'INVALID'");
+        }
+        assertThrows(SQLException.class, () -> store().load());
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + database());
+             var statement = connection.createStatement();
+             var result = statement.executeQuery("SELECT holder FROM maces")) {
+            assertTrue(result.next());
+            assertEquals(record.holder().toString(), result.getString(1));
+        }
+    }
+
+    @Test
     void refusesFutureSchemasWithoutOverwritingRecords() throws Exception {
         store().load();
         MaceSnapshot record = new MaceSnapshot(UUID.randomUUID(), null, "Owner", false, null, 0, 0);
         store().write(List.of(record));
         try (var connection = DriverManager.getConnection("jdbc:sqlite:" + database());
              var statement = connection.createStatement()) {
-            statement.execute("PRAGMA user_version = 2");
+            statement.execute("PRAGMA user_version = 3");
         }
         assertThrows(SQLException.class, () -> store().load());
         try (var connection = DriverManager.getConnection("jdbc:sqlite:" + database());

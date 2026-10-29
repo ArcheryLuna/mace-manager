@@ -199,6 +199,54 @@ class MaceRegistryTest {
         }
     }
 
+    @Test
+    void storageMovesPreserveOwnerAndShutdownFlushesLatestLocation() throws Exception {
+        UUID id = UUID.randomUUID();
+        Path file = fixture(id);
+        List<Runnable> tasks = new ArrayList<>();
+        MaceRegistry registry = registry(file, tasks);
+        registry.load();
+        UUID owner = registry.all().iterator().next().holder();
+        String name = registry.all().iterator().next().holderName();
+        MaceLocation chest = MaceLocation.block(MaceLocation.State.STORED, "CHEST", "offline-world", -17, 65, 32);
+        MaceLocation frame = MaceLocation.entity(MaceLocation.State.DISPLAYED, "ITEM_FRAME", "offline-world",
+                -2, 2, UUID.randomUUID());
+        registry.locate(UUID.randomUUID(), chest);
+        assertTrue(tasks.isEmpty());
+        registry.locate(id, chest);
+        registry.locate(id, chest);
+        assertEquals(1, tasks.size());
+        tasks.removeFirst().run();
+        MaceRecord stored = new SqliteMaceStore(file.toFile()).load().getFirst().record();
+        assertEquals(chest, stored.location());
+        assertEquals(owner, stored.holder());
+        assertEquals(name, stored.holderName());
+        registry.locate(id, chest);
+        assertTrue(tasks.isEmpty());
+        registry.locate(id, frame);
+        registry.locate(id, MaceLocation.playerStorage("ENDER_CHEST", owner));
+        registry.close();
+        tasks.forEach(Runnable::run);
+        MaceRecord reloaded = new SqliteMaceStore(file.toFile()).load().getFirst().record();
+        assertEquals(owner, reloaded.holder());
+        assertEquals(name, reloaded.holderName());
+        assertEquals(MaceLocation.playerStorage("ENDER_CHEST", owner), reloaded.location());
+
+        // Actual possession transfers ownership and clears the previous storage reference.
+        var player = org.mockito.Mockito.mock(org.bukkit.entity.Player.class);
+        UUID nextOwner = UUID.randomUUID();
+        org.mockito.Mockito.when(player.getUniqueId()).thenReturn(nextOwner);
+        org.mockito.Mockito.when(player.getName()).thenReturn("NextOwner");
+        MaceRegistry reopened = registry(file, new ArrayList<>());
+        reopened.load();
+        reopened.hold(id, player);
+        reopened.close();
+        MaceRecord carried = new SqliteMaceStore(file.toFile()).load().getFirst().record();
+        assertEquals(nextOwner, carried.holder());
+        assertEquals("NextOwner", carried.holderName());
+        assertEquals(MaceLocation.carried(), carried.location());
+    }
+
     private MaceRegistry registry(Path file, List<Runnable> tasks) {
         return new MaceRegistry(file.toFile(), Logger.getLogger("MaceRegistryTest"), tasks::add);
     }

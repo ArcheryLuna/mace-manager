@@ -58,6 +58,21 @@ that UUID, the holder's UUID and last known name, and the world/chunk coordinate
 when dropped. It does not store or restore the physical item, enchantments, or
 player inventory. Those remain part of Minecraft's world/player data.
 
+The registry model also supports stored and displayed locations separately from
+the recorded owner. These locations retain a storage type and either block
+coordinates, an entity UUID with its last known world/chunk, or a player UUID for
+personal storage such as an ender chest. Loading records needs no online player,
+loaded world, or loaded chunk. Moving a record to storage preserves its owner;
+actual player possession updates ownership and marks it carried.
+
+This is persistence support for the planned storage controls. Placement listeners
+and cleanup/audit integration are still pending; the existing storage restrictions
+remain in effect and the `mace-storage` settings are not active yet.
+
+Existing SQLite databases upgrade transactionally to schema version 2 on startup,
+preserving owners and dropped world/chunk references. Back up before upgrading;
+older schema-version-1 releases cannot open the upgraded database.
+
 Changes update the in-memory registry immediately and are batched for a
 transactional save on the next tick. Failed saves retain dirty state for retries.
 Shutdown drains pending writes and attempts to save the latest state. Optional

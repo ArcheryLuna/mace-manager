@@ -18,7 +18,7 @@ import java.util.UUID;
 
 /** JDBC connections never escape an operation; no Bukkit world/entity access here. */
 final class SqliteMaceStore {
-    private static final int SCHEMA_VERSION = 1;
+    private static final int SCHEMA_VERSION = 2;
     private final File database;
     private final File legacy;
 
@@ -59,10 +59,11 @@ final class SqliteMaceStore {
 
     private void initialize(Connection connection) throws IOException, SQLException {
         try (var statement = connection.createStatement()) {
+            int version;
             try (var result = statement.executeQuery("PRAGMA user_version")) {
                 result.next();
-                int version = result.getInt(1);
-                if (version != 0 && version != SCHEMA_VERSION) {
+                version = result.getInt(1);
+                if (version < 0 || version > SCHEMA_VERSION) {
                     throw new SQLException("Unsupported mace database schema version: " + version);
                 }
             }
@@ -84,6 +85,24 @@ final class SqliteMaceStore {
                         value TEXT NOT NULL
                     )
                     """);
+            if (version < 2) {
+                // Transactional upgrade: existing owners and dropped chunks remain unchanged.
+                statement.executeUpdate("ALTER TABLE maces ADD COLUMN location_state TEXT NOT NULL DEFAULT 'CARRIED'");
+                statement.executeUpdate("ALTER TABLE maces ADD COLUMN location_world TEXT");
+                statement.executeUpdate("ALTER TABLE maces ADD COLUMN location_chunk_x INTEGER NOT NULL DEFAULT 0");
+                statement.executeUpdate("ALTER TABLE maces ADD COLUMN location_chunk_z INTEGER NOT NULL DEFAULT 0");
+                statement.executeUpdate("ALTER TABLE maces ADD COLUMN block_x INTEGER");
+                statement.executeUpdate("ALTER TABLE maces ADD COLUMN block_y INTEGER");
+                statement.executeUpdate("ALTER TABLE maces ADD COLUMN block_z INTEGER");
+                statement.executeUpdate("ALTER TABLE maces ADD COLUMN location_entity TEXT");
+                statement.executeUpdate("ALTER TABLE maces ADD COLUMN inventory_owner TEXT");
+                statement.executeUpdate("ALTER TABLE maces ADD COLUMN storage_type TEXT");
+                statement.executeUpdate("""
+                        UPDATE maces SET location_state = 'DROPPED', location_world = drop_world,
+                            location_chunk_x = drop_chunk_x, location_chunk_z = drop_chunk_z
+                        WHERE dropped = 1
+                        """);
+            }
             boolean initialized;
             try (var result = statement.executeQuery(
                     "SELECT value FROM registry_metadata WHERE key = 'initialized'")) {
@@ -159,10 +178,14 @@ final class SqliteMaceStore {
                     String holder = result.getString("holder");
                     records.add(new MaceSnapshot(UUID.fromString(result.getString("id")),
                             holder == null ? null : UUID.fromString(holder), result.getString("holder_name"),
-                            result.getInt("dropped") != 0, result.getString("drop_world"),
-                            result.getInt("drop_chunk_x"), result.getInt("drop_chunk_z")));
-                } catch (IllegalArgumentException exception) {
-                    throw new SQLException("Invalid UUID in mace database", exception);
+                            new MaceLocation(MaceLocation.State.valueOf(result.getString("location_state")),
+                                    result.getString("location_world"), result.getInt("location_chunk_x"),
+                                    result.getInt("location_chunk_z"), (Integer) result.getObject("block_x"),
+                                    (Integer) result.getObject("block_y"), (Integer) result.getObject("block_z"),
+                                    uuid(result.getString("location_entity")), uuid(result.getString("inventory_owner")),
+                                    result.getString("storage_type"))));
+                } catch (IllegalArgumentException | NullPointerException exception) {
+                    throw new SQLException("Invalid mace database record", exception);
                 }
             }
         }
@@ -187,8 +210,10 @@ final class SqliteMaceStore {
 
     private void insert(Connection connection, List<MaceSnapshot> snapshot) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement("""
-                INSERT INTO maces (id, holder, holder_name, dropped, drop_world, drop_chunk_x, drop_chunk_z)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO maces (id, holder, holder_name, dropped, drop_world, drop_chunk_x, drop_chunk_z,
+                    location_state, location_world, location_chunk_x, location_chunk_z,
+                    block_x, block_y, block_z, location_entity, inventory_owner, storage_type)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """)) {
             for (MaceSnapshot record : snapshot) {
                 statement.setString(1, record.id().toString());
@@ -198,10 +223,25 @@ final class SqliteMaceStore {
                 statement.setString(5, record.dropped() ? record.dropWorld() : null);
                 statement.setInt(6, record.dropChunkX());
                 statement.setInt(7, record.dropChunkZ());
+                MaceLocation location = record.location();
+                statement.setString(8, location.state().name());
+                statement.setString(9, location.world());
+                statement.setInt(10, location.chunkX());
+                statement.setInt(11, location.chunkZ());
+                statement.setObject(12, location.blockX());
+                statement.setObject(13, location.blockY());
+                statement.setObject(14, location.blockZ());
+                statement.setString(15, location.entity() == null ? null : location.entity().toString());
+                statement.setString(16, location.inventoryOwner() == null ? null : location.inventoryOwner().toString());
+                statement.setString(17, location.storageType());
                 statement.addBatch();
             }
             statement.executeBatch();
         }
+    }
+
+    private static UUID uuid(String value) {
+        return value == null ? null : UUID.fromString(value);
     }
 
     private void rollback(Connection connection, Exception original) {
