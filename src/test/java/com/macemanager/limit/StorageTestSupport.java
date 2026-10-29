@@ -66,6 +66,7 @@ class StorageTestSupport {
     final List<Player> players = new ArrayList<>();
     final List<Chunk> chunks = new ArrayList<>();
     final List<Item> ground = new ArrayList<>();
+    final List<Runnable> tasks = new ArrayList<>();
     final Map<List<Integer>, Block> blocks = new HashMap<>();
     final Set<String> allowed = new java.util.HashSet<>(Set.of("ender-chests", "shelves", "item-frames", "glow-item-frames"));
     final TrackingListener tracking;
@@ -81,6 +82,12 @@ class StorageTestSupport {
         when(plugin.getServer()).thenReturn(server);
         when(plugin.getLogger()).thenReturn(java.util.logging.Logger.getLogger("StorageTest"));
         when(plugin.scans()).thenReturn(scans);
+        var scheduler = mock(org.bukkit.scheduler.BukkitScheduler.class);
+        when(server.getScheduler()).thenReturn(scheduler);
+        when(scheduler.runTask(eq(plugin), any(Runnable.class))).thenAnswer(call -> {
+            tasks.add(call.getArgument(1));
+            return mock(org.bukkit.scheduler.BukkitTask.class);
+        });
         when(plugin.chunkAccess()).thenReturn(new ChunkAccess(false));
         when(world.getName()).thenReturn("world");
         when(world.getUID()).thenReturn(UUID.randomUUID());
@@ -128,6 +135,7 @@ class StorageTestSupport {
         when(plugin.tracking()).thenReturn(tracking);
         when(world.dropItemNaturally(any(), any())).thenAnswer(call -> {
             Item item = mock(Item.class);
+            when(item.getType()).thenReturn(org.bukkit.entity.EntityType.ITEM);
             ItemStack stack = call.getArgument(1);
             when(item.getItemStack()).thenReturn(stack);
             when(item.getLocation()).thenReturn(call.getArgument(0));
@@ -239,5 +247,11 @@ class StorageTestSupport {
 
     void drain() {
         scans.tick(10000, Long.MAX_VALUE);
+    }
+
+    void nextTick() {
+        var pending = List.copyOf(tasks);
+        tasks.clear();
+        pending.forEach(Runnable::run);
     }
 }

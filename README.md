@@ -71,9 +71,9 @@ Placement and cleanup use the same `mace-storage` rules. Viewing storage does no
 transfer ownership. Taking a mace into a player's inventory or cursor does;
 portable containers retain the mace's recorded owner while carrying it inside.
 
-Existing SQLite databases upgrade transactionally to schema version 2 on startup,
-preserving owners and dropped world/chunk references. Back up before upgrading;
-older schema-version-1 releases cannot open the upgraded database.
+Existing SQLite databases upgrade transactionally to schema version 3 on startup,
+preserving ownership and locations and adding permanent administrative revocations.
+Back up before upgrading; older schema-version-1/2 releases cannot open the upgraded database.
 
 Changes update the in-memory registry immediately and are batched for a
 transactional save on the next tick. Failed saves retain dirty state for retries.
@@ -270,8 +270,9 @@ Numeric arguments must be nonnegative whole numbers. `remove` accepts a full UUI
 or an unambiguous prefix, including the short ID shown by `/maces`.
 
 Removal sweeps report completion after queued work finishes. They do not directly
-edit offline player files or scan unloaded chunks. An invalidated tracked mace is
-subject to normal cleanup when encountered later. `clearuntracked` only removes
+edit offline player files or scan unloaded chunks. Administrative revocations persist
+in SQLite: removed identities are deleted when encountered later, including nested
+storage and when `allowed-maces: -1`. `clearuntracked` only removes
 matching items encountered by its loaded-world sweep.
 
 ## Permissions

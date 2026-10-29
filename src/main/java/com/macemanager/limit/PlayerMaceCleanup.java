@@ -299,7 +299,7 @@ public final class PlayerMaceCleanup {
         if (classification.mace()) {
             var id = classification.id();
             boolean strict = plugin.settings().hasMaceLimit() && !classification.untracked();
-            if (strict && (id == null || !plugin.registry().contains(id))) {
+            if (plugin.registry().isRevoked(id) || (strict && (id == null || !plugin.registry().contains(id)))) {
                 illegalRemoved++;
                 return new Inspection(null, true);
             }

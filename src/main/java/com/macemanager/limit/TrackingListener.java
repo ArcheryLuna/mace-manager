@@ -35,6 +35,7 @@ public final class TrackingListener implements Listener {
     private boolean auditRunning;
     private long eventRevision;
     private final Map<UUID, Long> touched = new HashMap<>();
+    private final Set<UUID> destructionCandidates = new HashSet<>();
 
     public TrackingListener(MaceManagerPlugin plugin) {
         this.plugin = plugin;
@@ -184,14 +185,16 @@ public final class TrackingListener implements Listener {
         MaceObservations seen = new MaceObservations();
         ScanQueue.Job job = plugin.scans().submit(() -> {
             try {
-                if (queuedChunks.isEmpty() && plugin.settings().hasMaceLimit()) {
+                if (queuedChunks.isEmpty()) {
                     var missing = plugin.registry().all().stream()
-                            .filter(record -> touched.getOrDefault(record.id(), 0L) <= revision
+                            .filter(record -> (plugin.settings().hasMaceLimit() || destructionCandidates.contains(record.id()))
+                                    && touched.getOrDefault(record.id(), 0L) <= revision
                                     && !seen.contains(record.id()) && locationLoaded(record.location(), record.holder()))
                             .toList();
                     if (!missing.isEmpty()) {
                         confirmMissing(missing, revision);
                     }
+                    destructionCandidates.removeIf(id -> !plugin.registry().contains(id) || seen.contains(id));
                 }
             } catch (RuntimeException exception) {
                 auditRequested = true;
@@ -376,7 +379,8 @@ public final class TrackingListener implements Listener {
             return;
         }
         UUID id = classification.id();
-        if (plugin.settings().hasMaceLimit() && !classification.untracked() && (id == null || !plugin.registry().contains(id))) {
+        if (plugin.registry().isRevoked(id) || (plugin.settings().hasMaceLimit()
+                && !classification.untracked() && (id == null || !plugin.registry().contains(id)))) {
             event.setCancelled(true);
             event.getItem().remove();
             Notices.send(player, plugin.settings().format("illegal-removed"));
@@ -426,17 +430,7 @@ public final class TrackingListener implements Listener {
 
     @EventHandler(ignoreCancelled = true, priority = EventPriority.MONITOR)
     public void onDespawn(ItemDespawnEvent event) {
-        destroyContents(event.getEntity().getItemStack());
-    }
-
-    private void destroyContents(ItemStack stack) {
-        UUID id = plugin.maceItems().trackedId(stack);
-        if (id != null) {
-            plugin.destroyMace(id);
-        }
-        for (ItemStack child : NestedMaces.contents(stack)) {
-            destroyContents(child);
-        }
+        destroyIfGone(event.getEntity());
     }
 
     @EventHandler(ignoreCancelled = true)
@@ -465,11 +459,13 @@ public final class TrackingListener implements Listener {
         } else {
             groundItems.remove(item.getUniqueId());
         }
-        boolean illegal = plugin.settings().hasMaceLimit()
+        boolean unique = id == null || !plugin.registry().contains(id)
+                || seen.claim(id, item.getUniqueId(), () -> item.isValid() && !item.isDead()
+                        && id.equals(items.trackedId(item.getItemStack())));
+        boolean illegal = plugin.registry().isRevoked(id) || (plugin.settings().hasMaceLimit()
                 && classification.mace()
                 && !classification.untracked()
-                && (id == null || !plugin.registry().contains(id) || !seen.claim(id, item.getUniqueId(), () -> item.isValid() && !item.isDead()
-                        && id.equals(items.trackedId(item.getItemStack()))));
+                && (id == null || !plugin.registry().contains(id) || !unique));
         if (illegal) {
             item.remove();
             return;
@@ -494,12 +490,30 @@ public final class TrackingListener implements Listener {
         if (!NestedMaces.contains(item.getItemStack())) {
             return;
         }
+        Set<UUID> candidates = new HashSet<>();
+        collectIds(item.getItemStack(), candidates);
+        if (candidates.isEmpty()) {
+            return;
+        }
         plugin.getServer().getScheduler().runTask(plugin, () -> {
             if (!item.isValid() || item.isDead()) {
-                // Removal after damage can also be a hopper/player pickup. Verify actual
-                // absence through the audit instead of invalidating a successfully stored mace.
+                // Entity loss can be a pickup or a despawning duplicate. Verify the
+                // surviving identity before releasing its cap slot, even with the cap off.
                 auditRequested = true;
+                // Coalesce losses into the normal cooperative audit. Failed scans retain
+                // candidates for retry; do not run one full-world scan per damaged item.
+                destructionCandidates.addAll(candidates);
             }
         });
+    }
+
+    private void collectIds(ItemStack stack, Set<UUID> ids) {
+        UUID id = plugin.maceItems().trackedId(stack);
+        if (id != null) {
+            ids.add(id);
+        }
+        for (ItemStack child : NestedMaces.contents(stack)) {
+            collectIds(child, ids);
+        }
     }
 }

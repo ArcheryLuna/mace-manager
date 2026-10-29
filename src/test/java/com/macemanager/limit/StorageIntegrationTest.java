@@ -440,7 +440,11 @@ class StorageIntegrationTest {
         var pickup = new org.bukkit.event.entity.EntityPickupItemEvent(mock(org.bukkit.entity.Zombie.class), item, 0);
         f.tracking.onPickup(pickup);
         assertTrue(pickup.isCancelled());
+        f.records.get(id).markDropped("world", 0, 0);
         f.tracking.onDespawn(new org.bukkit.event.entity.ItemDespawnEvent(item, item.getLocation()));
+        f.nextTick();
+        f.tracking.reconcileAll();
+        f.drain();
         assertFalse(f.records.containsKey(id));
     }
 

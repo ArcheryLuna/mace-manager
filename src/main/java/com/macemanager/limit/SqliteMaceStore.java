@@ -18,7 +18,7 @@ import java.util.UUID;
 
 /** JDBC connections never escape an operation; no Bukkit world/entity access here. */
 final class SqliteMaceStore {
-    private static final int SCHEMA_VERSION = 2;
+    private static final int SCHEMA_VERSION = 3;
     private final File database;
     private final File legacy;
 
@@ -85,6 +85,7 @@ final class SqliteMaceStore {
                         value TEXT NOT NULL
                     )
                     """);
+            statement.executeUpdate("CREATE TABLE IF NOT EXISTS revoked_maces (id TEXT PRIMARY KEY NOT NULL)");
             if (version < 2) {
                 // Transactional upgrade: existing owners and dropped chunks remain unchanged.
                 statement.executeUpdate("ALTER TABLE maces ADD COLUMN location_state TEXT NOT NULL DEFAULT 'CARRIED'");
@@ -193,6 +194,25 @@ final class SqliteMaceStore {
     }
 
     void write(List<MaceSnapshot> snapshot) throws SQLException {
+        write(snapshot, List.of());
+    }
+
+    List<UUID> revoked() throws SQLException {
+        List<UUID> ids = new ArrayList<>();
+        try (Connection connection = connect(); var statement = connection.createStatement();
+             var result = statement.executeQuery("SELECT id FROM revoked_maces")) {
+            while (result.next()) {
+                try {
+                    ids.add(UUID.fromString(result.getString(1)));
+                } catch (IllegalArgumentException exception) {
+                    throw new SQLException("Invalid revoked mace identity", exception);
+                }
+            }
+        }
+        return ids;
+    }
+
+    void write(List<MaceSnapshot> snapshot, List<UUID> revoked) throws SQLException {
         try (Connection connection = connect()) {
             connection.setAutoCommit(false);
             try {
@@ -200,6 +220,14 @@ final class SqliteMaceStore {
                     statement.executeUpdate("DELETE FROM maces");
                 }
                 insert(connection, snapshot);
+                // Revocations are permanent and committed atomically with active records.
+                try (var statement = connection.prepareStatement("INSERT OR IGNORE INTO revoked_maces (id) VALUES (?)")) {
+                    for (UUID id : revoked) {
+                        statement.setString(1, id.toString());
+                        statement.addBatch();
+                    }
+                    statement.executeBatch();
+                }
                 connection.commit();
             } catch (SQLException | RuntimeException exception) {
                 rollback(connection, exception);

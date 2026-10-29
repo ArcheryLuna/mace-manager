@@ -59,6 +59,34 @@ event, or permission changes, also test on a Minecraft server when available.
 State the server implementation/version and relevant plugin combinations tested.
 Unit tests alone do not establish live-server compatibility.
 
+For storage releases, run the following on Paper 1.21.4 and a shelf-capable server
+(Paper 1.21.11), then repeat on the Spigot version being deployed. These checks
+require two players and a disposable world/database:
+
+- Store and retrieve a tracked mace in every enabled destination. Have the second
+  player view it, then take it: viewing retains the owner; possession transfers it.
+- Exercise clicks, shift-clicks, drags, hotbar/offhand swaps, hopper transfers, and
+  single/double/triple powered shelves. Repeat with the destination disabled.
+- Disconnect, restart, and unload/reload the storage chunk. Verify the same ID,
+  owner, location, and occupied cap slot survive. Repeat with nested bundles and
+  shulkers; place/break the shulker and carry it between players.
+- Break containers and frames, collect their drops, then test actual destruction
+  and despawning. A surviving duplicate must retain its record and cap slot.
+- Disable storage via reload while its chunk is unloaded, then load it. The mace
+  must be ejected once without losing identity. Repeat with the cap disabled.
+- Remove an ID administratively while its owner is offline or storage unloaded;
+  restart with the cap disabled, then return/load it. All copies of that ID,
+  including nested copies, must be removed without deleting unrelated contents.
+- Use a test plugin to cancel transfers/pickups after validation. Verify ownership
+  follows the resulting inventory, and test with the deployment's other plugins.
+
+Record server builds, Java version, plugin combinations, observed results, and
+failures. The automated lifecycle suite uses mocked inventory transactions and
+real SQLite persistence; its abrupt-process-exit test verifies database rollback,
+not coordination between Minecraft world saves and plugin writes. An abrupt
+server crash may lose the most recent unflushed tick; recovery must also be tested
+on the disposable server before deployment.
+
 Persistence tests use actual SQLite files in temporary directories. Packaging
 tests open a database using only the built JAR and JDK classes, checking that the
 bundled driver works without server-supplied dependencies.

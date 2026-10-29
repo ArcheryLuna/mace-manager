@@ -40,7 +40,7 @@ permissions:
     description: Turn mace enchanting on or off.
     default: op
   macemanager.command.remove:
-    description: Invalidate a tracked mace and sweep loaded inventories; reports completion later.
+    description: Permanently invalidate a tracked mace, including offline copies, and sweep loaded inventories.
     default: op
   macemanager.command.giveuntracked:
     description: Give a mace that ignores the limit.

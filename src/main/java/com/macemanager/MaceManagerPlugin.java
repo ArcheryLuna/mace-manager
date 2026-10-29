@@ -143,7 +143,7 @@ public final class MaceManagerPlugin extends JavaPlugin {
     }
 
     public void forgetMace(UUID id) {
-        if (registry.remove(id) != null) {
+        if (registry.revoke(id) != null) {
             recipes.requestSync();
         }
     }

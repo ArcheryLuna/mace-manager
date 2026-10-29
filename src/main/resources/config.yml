@@ -1,5 +1,6 @@
 # Maximum tracked maces.
 # -1 disables the cap and illegal-id enforcement. Storage rules below still apply.
+# Explicit admin removals remain enforced, including after restarts.
 # 0 allows none. A positive number caps tracked maces and removes maces without an id.
 # Offline holders still count. Lowering a positive limit does not delete tracked maces.
 allowed-maces: -1

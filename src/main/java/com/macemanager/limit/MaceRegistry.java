@@ -27,6 +27,7 @@ public final class MaceRegistry {
     private final Consumer<Runnable> schedule;
     private final SqliteMaceStore store;
     private final Map<UUID, MaceRecord> maces = new LinkedHashMap<>();
+    private final java.util.Set<UUID> revoked = new java.util.HashSet<>();
     private long revision;
     private final AtomicLong persistedRevision = new AtomicLong();
     private final AtomicLong maximumWriteNanos = new AtomicLong();
@@ -65,8 +66,13 @@ public final class MaceRegistry {
         }
         try {
             List<MaceSnapshot> records = store.load();
+            revoked.clear();
+            revoked.addAll(store.revoked());
             maces.clear();
             for (MaceSnapshot snapshot : records) {
+                if (revoked.contains(snapshot.id())) {
+                    throw new SQLException("Mace identity is both active and administratively removed");
+                }
                 MaceRecord record = snapshot.record();
                 maces.put(record.id(), record);
             }
@@ -88,11 +94,12 @@ public final class MaceRegistry {
         }
         // Copy primitive/string/UUID values on the server thread, never mutable records.
         List<MaceSnapshot> snapshot = maces.values().stream().map(MaceSnapshot::from).toList();
+        List<UUID> revokedSnapshot = List.copyOf(revoked);
         long version = revision;
         if (writer == null) {
-            write(snapshot, version);
+            write(snapshot, revokedSnapshot, version);
         } else {
-            pendingWrite = writer.submit(() -> write(snapshot, version));
+            pendingWrite = writer.submit(() -> write(snapshot, revokedSnapshot, version));
         }
     }
 
@@ -138,10 +145,10 @@ public final class MaceRegistry {
         }
     }
 
-    private void write(List<MaceSnapshot> snapshot, long version) {
+    private void write(List<MaceSnapshot> snapshot, List<UUID> revokedSnapshot, long version) {
         long start = System.nanoTime();
         try {
-            store.write(snapshot);
+            store.write(snapshot, revokedSnapshot);
             persistedRevision.set(version);
         } catch (SQLException exception) {
             logger.warning("Could not save maces.db: " + exception.getMessage());
@@ -179,6 +186,9 @@ public final class MaceRegistry {
     }
 
     public void register(UUID id, Player holder) {
+        if (isRevoked(id)) {
+            throw new IllegalArgumentException("Cannot register an administratively removed mace");
+        }
         maces.put(id, new MaceRecord(id, holder.getUniqueId(), holder.getName()));
         changed();
     }
@@ -186,6 +196,20 @@ public final class MaceRegistry {
     public MaceRecord remove(UUID id) {
         MaceRecord removed = maces.remove(id);
         if (removed != null) {
+            changed();
+        }
+        return removed;
+    }
+
+    public boolean isRevoked(UUID id) {
+        return id != null && revoked.contains(id);
+    }
+
+    /** Retain an admin removal for copies that are currently offline or unloaded. */
+    public MaceRecord revoke(UUID id) {
+        java.util.Objects.requireNonNull(id, "id");
+        MaceRecord removed = maces.remove(id);
+        if (revoked.add(id) || removed != null) {
             changed();
         }
         return removed;

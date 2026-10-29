@@ -26,6 +26,34 @@ class SqliteMaceStoreTest {
     }
 
     @Test
+    void upgradesVersionTwoAndCommitsRevocationWithRemovalAtomically() throws Exception {
+        store().load();
+        MaceSnapshot record = new MaceSnapshot(UUID.randomUUID(), UUID.randomUUID(), "Owner", false, null, 0, 0);
+        store().write(List.of(record));
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + database());
+             var statement = connection.createStatement()) {
+            statement.executeUpdate("DROP TABLE revoked_maces");
+            statement.execute("PRAGMA user_version = 2");
+        }
+        assertEquals(List.of(record), store().load());
+        assertTrue(store().revoked().isEmpty());
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + database());
+             var statement = connection.createStatement()) {
+            statement.executeUpdate("CREATE TRIGGER fail_revoke BEFORE INSERT ON revoked_maces BEGIN SELECT RAISE(ABORT, 'test failure'); END");
+        }
+        assertThrows(SQLException.class, () -> store().write(List.of(), List.of(record.id())));
+        assertEquals(List.of(record), store().load());
+        assertTrue(store().revoked().isEmpty());
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + database());
+             var statement = connection.createStatement()) {
+            statement.executeUpdate("DROP TRIGGER fail_revoke");
+        }
+        store().write(List.of(), List.of(record.id()));
+        assertTrue(store().load().isEmpty());
+        assertEquals(List.of(record.id()), store().revoked());
+    }
+
+    @Test
     void importsOwnershipAndDroppedLocationWithoutModifyingLegacyFile() throws Exception {
         UUID heldId = UUID.randomUUID();
         UUID droppedId = UUID.randomUUID();
@@ -189,7 +217,7 @@ class SqliteMaceStoreTest {
              var statement = connection.createStatement();
              var result = statement.executeQuery("PRAGMA user_version")) {
             assertTrue(result.next());
-            assertEquals(2, result.getInt(1));
+            assertEquals(3, result.getInt(1));
         }
     }
 
@@ -219,7 +247,7 @@ class SqliteMaceStoreTest {
         store().write(List.of(record));
         try (var connection = DriverManager.getConnection("jdbc:sqlite:" + database());
              var statement = connection.createStatement()) {
-            statement.execute("PRAGMA user_version = 3");
+            statement.execute("PRAGMA user_version = 4");
         }
         assertThrows(SQLException.class, () -> store().load());
         try (var connection = DriverManager.getConnection("jdbc:sqlite:" + database());
